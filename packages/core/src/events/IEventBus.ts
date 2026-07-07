@@ -38,7 +38,7 @@ export interface IEventBus<TEvents extends EventMap> {
    */
   emit<TKey extends EventKey<TEvents>>(
     event: TKey,
-    payload: EventPayload<TEvents, TKey>,
+    ...args: EventArguments<TEvents, TKey>
   ): void;
 
   /**

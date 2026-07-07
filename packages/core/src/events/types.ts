@@ -37,3 +37,11 @@ export type EventListener<TPayload> = (payload: TPayload) => void;
  * Function returned by `on()` to unsubscribe.
  */
 export type Unsubscribe = () => void;
+
+export type EventArguments<
+  TEvents extends EventMap,
+  TKey extends EventKey<TEvents>,
+> =
+  EventPayload<TEvents, TKey> extends void
+    ? []
+    : [payload: EventPayload<TEvents, TKey>];
