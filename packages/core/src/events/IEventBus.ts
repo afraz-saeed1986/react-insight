@@ -1,4 +1,5 @@
 import type {
+  EventArguments,
   EventKey,
   EventListener,
   EventMap,

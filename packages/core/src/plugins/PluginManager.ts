@@ -1,9 +1,9 @@
 import type { InsightPlugin } from "./types";
 
-export class PluginManager {
-  private readonly plugins = new Map<string, InsightPlugin>();
+export class PluginManager<TEvents extends object> {
+  private readonly plugins = new Map<string, InsightPlugin<TEvents>>();
 
-  public register(plugin: InsightPlugin): void {
+  public register(plugin: InsightPlugin<TEvents>): void {
     if (this.plugins.has(plugin.name)) {
       throw new Error(`Plugin "${plugin.name}" is already registered.`);
     }
@@ -15,7 +15,7 @@ export class PluginManager {
     return this.plugins.delete(name);
   }
 
-  public get(name: string): InsightPlugin | undefined {
+  public get(name: string): InsightPlugin<TEvents> | undefined {
     return this.plugins.get(name);
   }
 
@@ -23,7 +23,7 @@ export class PluginManager {
     return this.plugins.has(name);
   }
 
-  public list(): readonly InsightPlugin[] {
+  public list(): readonly InsightPlugin<TEvents>[] {
     return [...this.plugins.values()];
   }
 

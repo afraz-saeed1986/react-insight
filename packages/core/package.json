@@ -1,0 +1,36 @@
+{
+  "name": "@react-insight/core",
+  "version": "0.1.0",
+  "description": "Core package for React Insight",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "mitt": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "eslint": "^10.6.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

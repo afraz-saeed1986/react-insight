@@ -1,8 +1,13 @@
-export interface PluginContext {
-  emit(event: string, payload?: unknown): void;
+export interface PluginContext<TEvents extends object> {
+  emit<TKey extends keyof TEvents>(event: TKey, payload: TEvents[TKey]): void;
+
+  on<TKey extends keyof TEvents>(
+    event: TKey,
+    listener: (payload: TEvents[TKey]) => void,
+  ): () => void;
 }
 
-export interface InsightPlugin {
+export interface InsightPlugin<TEvents extends object = object> {
   /**
    * Unique plugin name.
    */
@@ -11,7 +16,7 @@ export interface InsightPlugin {
   /**
    * Called once when the plugin is registered.
    */
-  setup(context: PluginContext): void | Promise<void>;
+  setup(context: PluginContext<TEvents>): void | Promise<void>;
 
   /**
    * Called before the plugin is removed.
