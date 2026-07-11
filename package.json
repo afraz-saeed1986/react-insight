@@ -9,5 +9,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "clean": "pnpm -r clean"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.10"
   }
 }

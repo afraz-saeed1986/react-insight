@@ -9,12 +9,21 @@ export class Runtime<TEvents extends RuntimeEventMap = RuntimeEventMap> {
 
   private readonly pluginManager: PluginManager<TEvents>;
 
+  private destroyed = false;
+
   public constructor() {
     this.emitter = mitt<TEvents>();
     this.pluginManager = new PluginManager<TEvents>();
   }
 
+  private ensureNotDestroyed(): void {
+    if (this.destroyed) {
+      throw new Error("Runtime has been destroyed.");
+    }
+  }
+
   public async registerPlugin(plugin: InsightPlugin<TEvents>): Promise<void> {
+    this.ensureNotDestroyed();
     this.pluginManager.register(plugin);
 
     const context: PluginContext<TEvents> = {
@@ -44,6 +53,7 @@ export class Runtime<TEvents extends RuntimeEventMap = RuntimeEventMap> {
   }
 
   public async unregisterPlugin(name: string): Promise<void> {
+    this.ensureNotDestroyed();
     const plugin = this.pluginManager.get(name);
 
     if (!plugin) {
@@ -63,6 +73,7 @@ export class Runtime<TEvents extends RuntimeEventMap = RuntimeEventMap> {
     event: TKey,
     handler: (payload: TEvents[TKey]) => void,
   ): () => void {
+    this.ensureNotDestroyed();
     this.emitter.on(event, handler);
 
     return () => {
@@ -74,14 +85,30 @@ export class Runtime<TEvents extends RuntimeEventMap = RuntimeEventMap> {
     event: TKey,
     payload: TEvents[TKey],
   ): void {
+    this.ensureNotDestroyed();
     this.emitter.emit(event, payload);
   }
 
-  public clear(): void {
-    this.pluginManager.clear();
+  //   public clear(): void {
+  //     this.pluginManager.clear();
+  //   }
+
+  public async destroy(): Promise<void> {
+    if (this.destroyed) {
+      return;
+    }
+
+    const plugins = [...this.pluginManager.list()];
+
+    for (const plugin of plugins.reverse()) {
+      await this.unregisterPlugin(plugin.name);
+    }
+
+    this.destroyed = true;
   }
 
   public get plugins(): readonly InsightPlugin<TEvents>[] {
+    this.ensureNotDestroyed();
     return this.pluginManager.list();
   }
 }

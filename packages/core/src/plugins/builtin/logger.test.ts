@@ -9,7 +9,7 @@ describe("loggerPlugin", () => {
 
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await runtime.registerPlugin(loggerPlugin);
+    await runtime.registerPlugin(loggerPlugin());
 
     expect(spy).toHaveBeenCalledWith(
       "[React Insight] Plugin registered: logger",

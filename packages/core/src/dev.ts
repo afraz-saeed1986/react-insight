@@ -4,7 +4,7 @@ import { loggerPlugin } from "./plugins";
 async function bootstrap() {
   const runtime = new Runtime();
 
-  await runtime.registerPlugin(loggerPlugin);
+  await runtime.registerPlugin(loggerPlugin());
 
   await runtime.unregisterPlugin("logger");
 }
