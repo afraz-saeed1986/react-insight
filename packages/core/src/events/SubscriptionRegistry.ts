@@ -1,5 +1,5 @@
 import type { EventKey, EventMap } from "./types";
-import { Subscription } from "./Subscription";
+import type { Subscription } from "./Subscription";
 
 export class SubscriptionRegistry<TEvents extends EventMap> {
   private readonly subscriptions = new Map<
@@ -14,8 +14,12 @@ export class SubscriptionRegistry<TEvents extends EventMap> {
 
     const subscriptions = this.subscriptions.get(event) ?? [];
 
+    // SAFETY:
+    // The map is keyed by `subscription.event`, therefore every array only contains
+    // subscriptions for the same event key. TypeScript cannot currently express
+    // this key/value relationship for Map, so a cast is required here.
     subscriptions.push(
-      subscription as Subscription<TEvents, EventKey<TEvents>>,
+      subscription as unknown as Subscription<TEvents, EventKey<TEvents>>,
     );
 
     subscriptions.sort((a, b) => b.priority - a.priority);

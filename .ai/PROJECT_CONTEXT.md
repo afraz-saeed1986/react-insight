@@ -29,24 +29,38 @@ The project is currently in **Phase 1 — Core**.
 - tsup build configuration
 - Runtime implementation
 - Generic Runtime
+- Runtime destruction lifecycle (`destroy()`)
+- Runtime state protection after destruction
 - PluginManager implementation
 - Generic PluginManager
 - Plugin lifecycle
 - Generic PluginContext
 - Generic InsightPlugin
-- Generic definePlugin
+- Generic `definePlugin()`
 - Built-in Logger Plugin
+- Logger Plugin factory API
+- EventBus implementation
+- Subscription implementation
+- SubscriptionRegistry implementation
 - Runtime integration tests
+- EventBus unit tests
+- Subscription unit tests
+- SubscriptionRegistry unit tests
 - PluginManager unit tests
-- Logger Plugin integration test
+- Logger Plugin integration tests
+- Playground package
+- Workspace integration
+- Public package export validation
 - Atomic plugin registration with rollback on setup failure
+- Shared ESLint Flat Config
+- TypeScript strict configuration
+- Coverage thresholds
 - Core architecture documentation
 
 ### In Progress
 
-- Playground package
-- Workspace integration
-- Package export validation
+- GitHub Actions (CI)
+- Release preparation
 
 ### Not Started
 
@@ -54,9 +68,8 @@ The project is currently in **Phase 1 — Core**.
 - React hooks tracking
 - Timeline
 - DevTools panel
-- Coverage reporting
-- CI pipeline
-- Release preparation
+- Inspector
+- Session management
 
 ---
 
@@ -68,7 +81,7 @@ The project is currently in **Phase 1 — Core**.
 - Vite
 - mitt
 - Vitest
-- ESLint
+- ESLint (Flat Config)
 
 ---
 
@@ -78,21 +91,98 @@ The project is currently in **Phase 1 — Core**.
 - Clean Architecture
 - Incremental Refactoring
 - Type Safety
+- Strict TypeScript
 - Test-Driven Refactoring
+- Coverage-Driven Development
 - Documentation synchronized with implementation
 - No unnecessary abstractions
 - No breaking API without discussion
 
 ---
 
+## Current Quality
+
+Current Core package coverage is approximately:
+
+| Metric     | Coverage | Threshold |
+| ---------- | -------: | --------: |
+| Statements |     ~92% |       90% |
+| Lines      |     ~91% |       90% |
+| Branches   |     ~85% |       80% |
+| Functions  |     ~88% |       85% |
+
+The project enforces these thresholds through Vitest.
+
+Every completed change is expected to pass:
+
+- ESLint
+- TypeScript type checking
+- Build
+- Unit tests
+- Coverage thresholds
+
+---
+
 ## Current Focus
 
-The current focus is validating the public developer experience by building the first real consumer of the library.
+The current focus is stabilizing the Core package before starting React-specific features.
 
-The Playground package imports the Core package exactly as an external consumer would:
+Current work includes:
+
+- GitHub Actions
+- Automated quality gates
+- Release readiness
+
+The Playground package is used as the primary integration environment.
+
+It imports the Core package exactly as an external consumer would:
+
+```ts
+import { Runtime, loggerPlugin } from "@react-insight/core";
+
+const runtime = new Runtime();
+
+await runtime.registerPlugin(loggerPlugin());
+```
+
+Rules:
 
 - No relative imports
 - No internal source imports
 - Workspace package resolution only
 
-This phase validates packaging, exports and public API before starting the React package.
+This validates:
+
+- Package exports
+- Public API
+- Plugin lifecycle
+- Runtime destruction
+- Developer Experience (DX)
+- Packaging before npm publishing
+
+---
+
+## Current Architecture Notes
+
+The project preserves strict compiler settings.
+
+Known TypeScript limitations are documented instead of weakening compiler guarantees.
+
+Current example:
+
+- `SubscriptionRegistry` contains one localized and documented type assertion required because TypeScript cannot fully express key-dependent `Map` value types.
+
+---
+
+## Next Milestone
+
+Complete the Core Quality Gate by implementing:
+
+- GitHub Actions CI workflow
+- Automated lint
+- Automated type checking
+- Automated build
+- Automated test execution
+- Automated coverage verification
+
+After the Quality Gate is complete, development will move to **Phase 2 — React Integration**.

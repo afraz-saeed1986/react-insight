@@ -63,18 +63,123 @@ Completed:
 - Started validating public package exports
 - First packaging issue discovered during Playground integration
 
+---
+
+## Session 6
+
+Completed:
+
+### Playground
+
+- Fixed package export issue
+- Built Core package before Playground consumption
+- Verified workspace package resolution
+- Verified public package exports
+- Created first Playground demo
+- Registered built-in Logger Plugin
+- Added Greeting Plugin
+- Verified plugin lifecycle in Playground
+- Verified Runtime destruction in Playground
+
+### Runtime
+
+- Replaced `clear()` with `destroy()`
+- Added Runtime destruction lifecycle
+- Added Runtime state protection
+- Introduced `ensureNotDestroyed()`
+- Runtime now throws after destruction
+- Verified reverse plugin destruction order (LIFO)
+
+### Built-in Plugins
+
+- Refactored Logger Plugin into a factory function
+- Eliminated shared plugin state between Runtime instances
+- Improved test isolation
+
+### Event System
+
+- EventBus implementation completed
+- Subscription implementation completed
+- SubscriptionRegistry implementation completed
+- EventBus unit tests completed
+- Subscription unit tests completed
+- SubscriptionRegistry unit tests completed
+
+### Testing
+
+- Expanded Runtime integration tests
+- Added duplicate plugin registration tests
+- Added Runtime destruction tests
+- Added Logger Plugin integration tests
+- Refactored test setup using `beforeEach` / `afterEach`
+- Overall Core test coverage exceeded 90%
+
+### Documentation
+
+- Updated:
+  - ARCHITECTURE.md
+  - DECISIONS.md
+  - PROJECT_CONTEXT.md
+  - ROADMAP.md
+
+---
+
+## Session 7
+
+Completed:
+
+### Quality Gate
+
+- Configured Vitest coverage thresholds
+- Enabled V8 coverage provider
+- Added HTML, LCOV and text coverage reports
+- Verified coverage exceeds configured thresholds
+- Added workspace Quality Gate commands
+
+### Tooling
+
+- Introduced shared ESLint Flat Config package
+- Migrated workspace to ESLint Flat Config
+- Enabled strict linting across the Core package
+- Preserved TypeScript strict compiler settings
+
+### Type Safety
+
+- Fixed `exactOptionalPropertyTypes` compatibility
+- Investigated `SubscriptionRegistry` generic variance
+- Localized the required type assertion
+- Documented the type-safety rationale
+
+### Documentation
+
+- Synchronized:
+  - ARCHITECTURE.md
+  - DECISIONS.md
+  - PROJECT_CONTEXT.md
+  - ROADMAP.md
+
 Current status:
 
-- Core architecture is considered stable.
-- Runtime, PluginManager and Logger Plugin are tested.
-- Playground is the first real consumer of the Core package.
-- Current work is focused on package exports and developer experience.
+- Phase 1 (Core) is feature complete.
+- Core Quality Gate is complete except GitHub Actions CI.
+- Documentation is synchronized with the implementation.
+- The project is ready for CI automation.
+
+Current metrics:
+
+- 5 test files
+- 32 passing tests
+- ~92% Statements
+- ~91% Lines
+- ~85% Branches
+- ~88% Functions
 
 Next session:
 
-- Resolve Playground package export issue
-- Complete Playground integration
-- Add Coverage reporting
-- Configure CI pipeline
-- Finish Phase 1
-- Start Phase 2 (React package)
+- Implement GitHub Actions CI
+- Automate linting
+- Automate type checking
+- Automate build
+- Automate test execution
+- Automate coverage verification
+- Finalize Phase 1

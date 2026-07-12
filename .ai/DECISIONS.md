@@ -126,6 +126,10 @@ It imports the package exactly as external users will:
 
 ```ts
 import { Runtime, loggerPlugin } from "@react-insight/core";
+
+const runtime = new Runtime();
+
+await runtime.registerPlugin(loggerPlugin());
 ```
 
 Relative imports from `core/src` are not allowed.
@@ -153,3 +157,154 @@ package
 Reason:
 
 Keep the monorepo consistent and easy to maintain.
+
+---
+
+## 2026-07-11
+
+### Runtime destruction
+
+Runtime exposes a dedicated `destroy()` method.
+
+After destruction:
+
+- every registered plugin is destroyed,
+- plugins are destroyed in reverse registration order (LIFO),
+- Runtime becomes permanently unusable.
+
+Every public API validates the Runtime state before executing.
+
+Reason:
+
+Prevent resource leaks and ensure deterministic shutdown.
+
+---
+
+## 2026-07-11
+
+### Removed Runtime.clear()
+
+`clear()` was removed in favor of `destroy()`.
+
+Reason:
+
+Removing plugins without executing their cleanup logic could leave resources and event subscriptions alive.
+
+A Runtime should have a single explicit shutdown mechanism.
+
+---
+
+## 2026-07-11
+
+### Built-in plugins are factories
+
+Built-in plugins are created using factory functions.
+
+Example:
+
+```ts
+const logger = loggerPlugin();
+```
+
+instead of:
+
+```ts
+const logger = loggerPlugin;
+```
+
+Reason:
+
+Each Runtime receives an isolated plugin instance.
+
+Internal plugin state (such as event disposers) is never shared across Runtime instances or test executions.
+
+---
+
+## 2026-07-11
+
+### Coverage-driven development
+
+Core development now follows a coverage-first approach.
+
+Every completed feature is followed by:
+
+- Unit tests
+- Integration tests
+- Coverage review
+
+Reason:
+
+Keep the Core package stable before expanding the public API.
+
+Coverage thresholds are enforced through Vitest configuration.
+
+---
+
+## 2026-07-11
+
+### Quality Gate
+
+Every change must successfully pass:
+
+- ESLint
+- TypeScript type checking
+- Build
+- Unit tests
+- Coverage thresholds
+
+Reason:
+
+Prevent regressions before changes are committed.
+
+---
+
+## 2026-07-11
+
+### Shared ESLint configuration
+
+The workspace now provides a shared Flat Config package.
+
+All packages consume the same ESLint configuration.
+
+Reason:
+
+Ensure consistent code quality rules across the monorepo while avoiding duplicated configuration.
+
+---
+
+## 2026-07-11
+
+### Preserve TypeScript strictness
+
+Compiler strictness is never relaxed to silence type errors.
+
+In particular:
+
+- `strictFunctionTypes` remains enabled.
+- `strict` mode remains enabled.
+
+When TypeScript cannot express a safe relationship, localized and documented type assertions are preferred over weakening compiler guarantees.
+
+Reason:
+
+Maintain a strongly typed public API and maximize compile-time correctness.
+
+---
+
+## 2026-07-11
+
+### Playground as integration validation
+
+Playground is no longer only a manual demo.
+
+It serves as an integration test bed for:
+
+- package exports
+- plugin lifecycle
+- Runtime destruction
+- built-in plugins
+- workspace package resolution
+
+Reason:
+
+Ensure the published package behaves exactly as it will in external applications.

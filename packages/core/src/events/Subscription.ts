@@ -35,7 +35,9 @@ export class Subscription<
     this.listener = listener;
     this.once = options.once ?? false;
     this.priority = options.priority ?? 0;
-    this.owner = options.owner;
+    if (options.owner !== undefined) {
+      this.owner = options.owner;
+    }
     this.createdAt = Date.now();
   }
 }

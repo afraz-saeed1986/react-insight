@@ -7,49 +7,79 @@
 - [x] Project setup
 - [x] Workspace
 - [x] Build system
+- [x] Shared ESLint configuration
 
 ### Core Architecture
 
 - [x] Runtime
 - [x] Generic Runtime
+- [x] Runtime destruction lifecycle
+- [x] Runtime state protection
 - [x] PluginManager
 - [x] Generic PluginManager
 - [x] Plugin lifecycle
 - [x] Generic PluginContext
 - [x] Generic InsightPlugin
-- [x] Generic definePlugin
+- [x] Generic `definePlugin()`
+- [x] EventBus
+- [x] Subscription
+- [x] SubscriptionRegistry
 
 ### Built-in Plugins
 
 - [x] Logger Plugin
+- [x] Logger Plugin factory API
 
 ### Quality
 
 - [x] Runtime integration tests
+- [x] EventBus unit tests
+- [x] Subscription unit tests
+- [x] SubscriptionRegistry unit tests
 - [x] PluginManager unit tests
-- [x] Logger Plugin integration test
+- [x] Logger Plugin integration tests
+- [x] ESLint
+- [x] TypeScript strict type checking
+- [x] Coverage thresholds
+- [ ] GitHub Actions CI
 
 ### Playground
 
 - [x] Playground package created
-- [ ] Workspace integration
-- [ ] Public API validation
-- [ ] Initial demo
+- [x] Workspace integration
+- [x] Public API validation
+- [x] Initial demo
 
 ---
 
 ## Phase 2 — React
 
+### React Runtime
+
 - [ ] React package
+- [ ] `createInsight()`
 - [ ] React Runtime integration
+- [ ] Root registration
+
+### Tracking
+
 - [ ] Component tracking
 - [ ] Render tracking
 - [ ] State tracking
 - [ ] Hook tracking
+- [ ] Context tracking
 
 ---
 
 ## Phase 3 — Inspector
+
+### Core
+
+- [ ] Inspector
+- [ ] Session
+- [ ] Internal communication
+
+### DevTools
 
 - [ ] DevTools Panel
 - [ ] Timeline
@@ -62,15 +92,17 @@
 
 ### Quality
 
-- [ ] Coverage reporting
 - [ ] Benchmarks
-- [ ] CI pipeline
+- [ ] Performance profiling
 
 ### Documentation
 
 - [ ] Documentation
 - [ ] Examples
+- [ ] API Reference
 
 ### Release
 
 - [ ] npm publish
+- [ ] GitHub Release
+- [ ] Versioning strategy
