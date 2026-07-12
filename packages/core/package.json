@@ -1,7 +1,29 @@
 {
   "name": "@react-insight/core",
   "version": "0.1.0",
-  "description": "Core package for React Insight",
+  "description": "TypeScript-first plugin runtime powering React Insight.",
+  "keywords": [
+    "react",
+    "react-insight",
+    "plugin",
+    "runtime",
+    "typescript",
+    "debugging",
+    "inspection",
+    "developer-tools"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/afraz-saeed1986/react-insight.git"
+  },
+  "homepage": "https://github.com/afraz-saeed1986/react-insight",
+  "bugs": {
+    "url": "https://github.com/afraz-saeed1986/react-insight/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

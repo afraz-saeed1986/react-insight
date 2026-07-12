@@ -41,7 +41,7 @@
 - [x] ESLint
 - [x] TypeScript strict type checking
 - [x] Coverage thresholds
-- [ ] GitHub Actions CI
+- [x] GitHub Actions CI
 
 ### Playground
 

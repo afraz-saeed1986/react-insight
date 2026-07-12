@@ -308,3 +308,25 @@ It serves as an integration test bed for:
 Reason:
 
 Ensure the published package behaves exactly as it will in external applications.
+
+---
+
+## 2026-07-12
+
+### Automated Quality Gate
+
+The project quality gate is enforced through GitHub Actions CI.
+
+Every push and pull request targeting the main development branches automatically executes:
+
+- ESLint
+- TypeScript type checking
+- Build
+- Unit tests
+- Coverage verification
+
+The workflow runs against the supported Node.js LTS versions using a matrix strategy.
+
+Reason:
+
+Ensure every contribution satisfies the project's quality standards before being merged, while validating compatibility across supported Node.js versions.

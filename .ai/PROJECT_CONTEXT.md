@@ -20,7 +20,7 @@ Long-term goals:
 
 ## Current Status
 
-The project is currently in **Phase 1 — Core**.
+The project has completed **Phase 1 — Core**.
 
 ### Completed
 
@@ -56,10 +56,11 @@ The project is currently in **Phase 1 — Core**.
 - TypeScript strict configuration
 - Coverage thresholds
 - Core architecture documentation
+- GitHub Actions CI
+- Automated Quality Gate
 
 ### In Progress
 
-- GitHub Actions (CI)
 - Release preparation
 
 ### Not Started
@@ -82,6 +83,7 @@ The project is currently in **Phase 1 — Core**.
 - mitt
 - Vitest
 - ESLint (Flat Config)
+- GitHub Actions
 
 ---
 
@@ -111,9 +113,9 @@ Current Core package coverage is approximately:
 | Branches   |     ~85% |       80% |
 | Functions  |     ~88% |       85% |
 
-The project enforces these thresholds through Vitest.
+The project enforces these thresholds through Vitest and verifies them automatically through GitHub Actions CI.
 
-Every completed change is expected to pass:
+Every contribution is validated by the automated Quality Gate, which executes:
 
 - ESLint
 - TypeScript type checking
@@ -125,13 +127,13 @@ Every completed change is expected to pass:
 
 ## Current Focus
 
-The current focus is stabilizing the Core package before starting React-specific features.
+The current focus is preparing the project for its first public release before starting React-specific features.
 
 Current work includes:
 
-- GitHub Actions
-- Automated quality gates
-- Release readiness
+- Release preparation
+- npm publishing readiness
+- Phase 2 planning
 
 The Playground package is used as the primary integration environment.
 
@@ -176,13 +178,14 @@ Current example:
 
 ## Next Milestone
 
-Complete the Core Quality Gate by implementing:
+With **Phase 1 — Core** complete, the next milestone is **Phase 2 — React Integration**.
 
-- GitHub Actions CI workflow
-- Automated lint
-- Automated type checking
-- Automated build
-- Automated test execution
-- Automated coverage verification
+Initial Phase 2 goals include:
 
-After the Quality Gate is complete, development will move to **Phase 2 — React Integration**.
+- React package
+- `createInsight()`
+- React Runtime integration
+- Root registration
+- Component tracking foundation
+
+The completed Core package and automated Quality Gate provide a stable foundation for the next phase of development.
