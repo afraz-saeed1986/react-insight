@@ -1,0 +1,1 @@
+export { useInsight } from "./useInsight";
