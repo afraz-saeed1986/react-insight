@@ -14,6 +14,8 @@ export const runtimeSymbol: unique symbol = Symbol("runtime");
 export interface RuntimeHolder {
   readonly [runtimeSymbol]: Runtime;
   readonly rootRegistry: RootRegistry;
+
+  unregisterPlugin(name: string): Promise<void>;
 }
 
 /**

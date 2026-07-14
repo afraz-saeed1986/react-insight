@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 
 import { createInsight } from "./createInsight";
 import { InsightProvider } from "./InsightProvider";
@@ -52,5 +52,26 @@ describe("InsightProvider", () => {
     );
 
     expect(internalInsight.rootRegistry.size).toBe(1);
+  });
+
+  it("unregisters the React root on unmount", async () => {
+    const insight = createInsight();
+    const internalInsight = getInternalInsight(insight);
+
+    const { unmount } = render(
+      <InsightProvider insight={insight}>
+        <div>Test</div>
+      </InsightProvider>,
+    );
+
+    await waitFor(() => {
+      expect(internalInsight.rootRegistry.size).toBe(1);
+    });
+
+    unmount();
+
+    await waitFor(() => {
+      expect(internalInsight.rootRegistry.size).toBe(0);
+    });
   });
 });

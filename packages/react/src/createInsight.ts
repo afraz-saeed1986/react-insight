@@ -20,6 +20,10 @@ export function createInsight(): Insight {
     destroy() {
       return runtime.destroy();
     },
+
+    unregisterPlugin(name) {
+      return runtime.unregisterPlugin(name);
+    },
   };
 
   return insight;

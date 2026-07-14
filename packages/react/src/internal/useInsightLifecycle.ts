@@ -31,7 +31,7 @@ export function useInsightLifecycle(insight: Insight): void {
     void internalInsight.use(plugin);
 
     return () => {
-      // Reserved for future cleanup.
+      void internalInsight.unregisterPlugin(plugin.name);
     };
   }, [internalInsight]);
 }
