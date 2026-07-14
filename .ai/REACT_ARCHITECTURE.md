@@ -108,7 +108,7 @@ Responsible for:
 
 - Providing the `Insight` instance through React Context.
 - Making the public API available to React components.
-- Serving as the integration point for future React-specific functionality.
+- Hosting the internal React lifecycle integration.
 
 The Provider must never own or implement Runtime behavior.
 
@@ -157,6 +157,7 @@ Responsibilities:
 - `useInsight()`
 - React Context
 - React lifecycle integration
+- Internal React lifecycle infrastructure
 - Future React-specific features
 
 The React package consumes the Runtime provided by `@react-insight/core`.
@@ -190,8 +191,10 @@ Current internal implementation includes:
 
 - Internal Runtime symbol
 - Internal Runtime holder types
+- Internal Root model
+- Internal RootRegistry
+- Internal React lifecycle hook
 - Private React Context
-- Future React integration helpers
 
 This separation allows internal refactoring without introducing breaking API changes.
 
@@ -209,6 +212,8 @@ packages/react
 │   ├── createInsight.test.ts
 │   ├── InsightProvider.tsx
 │   ├── InsightProvider.test.tsx
+│   ├── types.ts
+│   ├── index.ts
 │   │
 │   ├── context/
 │   │   ├── InsightContext.ts
@@ -218,11 +223,12 @@ packages/react
 │   │   ├── useInsight.ts
 │   │   └── index.ts
 │   │
-│   ├── internal/
-│   │   └── runtime.ts
-│   │
-│   ├── types.ts
-│   └── index.ts
+│   └── internal/
+│       ├── index.ts
+│       ├── root.ts
+│       ├── rootRegistry.ts
+│       ├── runtime.ts
+│       └── useInsightLifecycle.ts
 │
 ├── tsup.config.ts
 ├── tsconfig.json
@@ -254,7 +260,7 @@ Responsibilities:
 
 - React Context Provider
 - Context wiring
-- Future React integration
+- Internal React lifecycle integration
 
 Must not implement Runtime logic.
 
@@ -294,6 +300,9 @@ Current contents:
 
 - Runtime symbol
 - Internal Runtime holder types
+- Internal Root model
+- RootRegistry
+- React lifecycle hook
 
 Nothing inside this directory is part of the public API.
 
@@ -323,6 +332,7 @@ Current test coverage includes:
 - `createInsight()`
 - `InsightProvider`
 - `useInsight()`
+- `RootRegistry`
 - Provider integration
 - Public API encapsulation
 

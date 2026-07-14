@@ -9,7 +9,7 @@ export interface InsightProviderProps extends PropsWithChildren {
 }
 
 export function InsightProvider({ insight, children }: InsightProviderProps) {
-  useInsightLifecycle();
+  useInsightLifecycle(insight);
 
   return (
     <InsightContext.Provider value={insight}>

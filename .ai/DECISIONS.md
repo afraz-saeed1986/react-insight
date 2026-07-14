@@ -416,3 +416,19 @@ Current public APIs covered by automated tests include:
 Reason:
 
 Protect the React integration layer against regressions while maintaining a stable developer experience.
+
+---
+
+## 2026-07-14
+
+### Defer React-specific runtime infrastructure
+
+React-specific runtime infrastructure such as `ReactBridge`, `InsightSession`, or similar ownership abstractions is intentionally postponed until a real runtime consumer exists.
+
+Current React infrastructure is implemented only when justified by actual behavior and integration requirements.
+
+Reason:
+
+Follow the YAGNI principle and avoid introducing abstractions before they provide concrete value.
+
+This keeps the React package simple while allowing future architecture to evolve from real use cases instead of predictions.

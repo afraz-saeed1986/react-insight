@@ -185,6 +185,23 @@ Plugins are destroyed in **reverse registration order (LIFO)**.
 
 ---
 
+## React Integration
+
+The React package builds on top of the completed Core package.
+
+Current architecture includes:
+
+- Public `Insight` abstraction
+- Internal Runtime encapsulation
+- React Context
+- Internal Root model
+- Internal RootRegistry
+- Internal React lifecycle hook
+
+The React package owns React-specific behavior only and delegates all Runtime responsibilities to `@react-insight/core`.
+
+---
+
 ## Design Rules
 
 - Runtime owns the plugin lifecycle.
@@ -278,6 +295,7 @@ Current coverage includes:
 - `createInsight()`
 - `InsightProvider`
 - `useInsight()`
+- `RootRegistry`
 - Provider integration
 - Public API encapsulation
 
@@ -303,7 +321,7 @@ Current Core coverage is approximately:
 
 Coverage reports are generated using the V8 provider in:
 
-```
+```text
 coverage/
 ```
 
@@ -311,7 +329,7 @@ coverage/
 
 ## Monorepo Architecture
 
-```
+```text
 packages
 │
 ├── core
@@ -327,6 +345,13 @@ Framework-agnostic Runtime implementation.
 ### react
 
 Official React integration layer.
+
+Current internal infrastructure includes:
+
+- Runtime encapsulation
+- Root model
+- RootRegistry
+- React lifecycle hook
 
 ### playground
 

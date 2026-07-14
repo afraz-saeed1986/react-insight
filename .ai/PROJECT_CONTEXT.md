@@ -76,9 +76,12 @@ The project has completed **Phase 1 — Core** and entered **Phase 2 — React I
 - `createInsight()`
 - `InsightProvider`
 - `useInsight()`
+- `useInsightLifecycle()`
 - Internal Runtime encapsulation
 - React Context
 - Internal architecture layer
+- Internal Root model
+- Internal RootRegistry
 - React package unit tests
 - React integration tests
 
@@ -87,7 +90,7 @@ The project has completed **Phase 1 — Core** and entered **Phase 2 — React I
 ### In Progress
 
 - React integration
-- Root registration
+- React lifecycle foundation
 - Component tracking foundation
 
 ---
@@ -164,9 +167,9 @@ The current focus is building the React integration layer on top of the complete
 
 Current work includes:
 
-- React Runtime integration
-- Root registration
 - React lifecycle integration
+- Internal React lifecycle plugin
+- Root registration
 - Component tracking foundation
 
 The Playground package continues to serve as the primary integration environment.
@@ -210,6 +213,7 @@ The next milestone focuses on expanding the React integration layer.
 
 Immediate goals include:
 
+- Internal React lifecycle plugin
 - Root registration
 - Component tracking
 - Render tracking

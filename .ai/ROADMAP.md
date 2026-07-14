@@ -60,6 +60,8 @@
 - [x] Package build configuration
 - [x] Public package exports
 - [x] Internal architecture layer
+- [x] Internal Root model
+- [x] Internal RootRegistry
 
 ### Public API
 
@@ -72,6 +74,7 @@
 
 ### React Runtime
 
+- [ ] Internal React lifecycle plugin
 - [ ] Root registration
 - [ ] React Runtime integration
 - [ ] Runtime lifecycle synchronization
