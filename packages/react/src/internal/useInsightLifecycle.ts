@@ -4,6 +4,8 @@ import type { Insight } from "../types";
 
 import { getInternalInsight } from "./getInternalInsight";
 
+import { createReactLifecyclePlugin } from "./plugins/reactLifecyclePlugin";
+
 /**
  * Internal React lifecycle integration.
  *
@@ -22,9 +24,11 @@ export function useInsightLifecycle(insight: Insight): void {
   const internalInsight = getInternalInsight(insight);
 
   useEffect(() => {
-    // Keep the registry reachable from the single React
-    // lifecycle integration point.
-    void internalInsight.rootRegistry;
+    const plugin = createReactLifecyclePlugin({
+      registry: internalInsight.rootRegistry,
+    });
+
+    void internalInsight.use(plugin);
 
     return () => {
       // Reserved for future cleanup.

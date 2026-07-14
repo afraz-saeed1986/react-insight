@@ -5,6 +5,8 @@ import { createInsight } from "./createInsight";
 import { InsightProvider } from "./InsightProvider";
 import { useInsight } from "./hooks";
 
+import { getInternalInsight } from "./internal/getInternalInsight";
+
 function TestComponent() {
   const insight = useInsight();
 
@@ -36,5 +38,19 @@ describe("InsightProvider", () => {
     expect(() => render(<TestComponent />)).toThrow(
       "useInsight must be used within an <InsightProvider>.",
     );
+  });
+  it("registers a React root on mount", () => {
+    const insight = createInsight();
+    const internalInsight = getInternalInsight(insight);
+
+    expect(internalInsight.rootRegistry.size).toBe(0);
+
+    render(
+      <InsightProvider insight={insight}>
+        <div>Test</div>
+      </InsightProvider>,
+    );
+
+    expect(internalInsight.rootRegistry.size).toBe(1);
   });
 });
