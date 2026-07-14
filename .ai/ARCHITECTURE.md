@@ -193,12 +193,16 @@ Current architecture includes:
 
 - Public `Insight` abstraction
 - Internal Runtime encapsulation
+- Internal Runtime access helpers
 - React Context
 - Internal Root model
 - Internal RootRegistry
 - Internal React lifecycle hook
+- Internal React Lifecycle Plugin
 
 The React package owns React-specific behavior only and delegates all Runtime responsibilities to `@react-insight/core`.
+
+React roots are synchronized with the Runtime through an internal lifecycle plugin, while the Runtime remains the sole owner of the plugin lifecycle.
 
 ---
 
@@ -207,7 +211,7 @@ The React package owns React-specific behavior only and delegates all Runtime re
 - Runtime owns the plugin lifecycle.
 - PluginManager stores plugins only.
 - Plugins never access Runtime directly.
-- Plugins communicate only through PluginContext.
+- Plugins communicate only through `PluginContext`.
 - EventBus remains an internal implementation detail.
 - Event emitter implementation is private.
 - Public API is strongly typed using generics.
@@ -296,7 +300,9 @@ Current coverage includes:
 - `InsightProvider`
 - `useInsight()`
 - `RootRegistry`
-- Provider integration
+- React Lifecycle Plugin
+- Provider lifecycle integration
+- Mount / Unmount synchronization
 - Public API encapsulation
 
 ---
@@ -349,9 +355,11 @@ Official React integration layer.
 Current internal infrastructure includes:
 
 - Runtime encapsulation
+- Runtime access helpers
 - Root model
 - RootRegistry
 - React lifecycle hook
+- React Lifecycle Plugin
 
 ### playground
 

@@ -74,13 +74,16 @@
 
 ### React Runtime
 
-- [ ] Internal React lifecycle plugin
-- [ ] Root registration
-- [ ] React Runtime integration
-- [ ] Runtime lifecycle synchronization
+- [x] Internal React lifecycle plugin
+- [x] Root registration
+- [x] Root cleanup
+- [x] React Runtime integration
+- [x] Runtime lifecycle synchronization
+- [x] Mount / Unmount synchronization
 
 ### Tracking
 
+- [ ] Component Registry
 - [ ] Component tracking
 - [ ] Render tracking
 - [ ] State tracking

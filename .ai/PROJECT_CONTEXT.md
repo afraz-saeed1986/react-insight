@@ -20,7 +20,7 @@ Long-term goals:
 
 ## Current Status
 
-The project has completed **Phase 1 — Core** and entered **Phase 2 — React Integration**.
+The project has completed **Phase 1 — Core** and is actively progressing through **Phase 2 — React Integration**.
 
 ### Completed
 
@@ -76,12 +76,16 @@ The project has completed **Phase 1 — Core** and entered **Phase 2 — React I
 - `createInsight()`
 - `InsightProvider`
 - `useInsight()`
-- `useInsightLifecycle()`
 - Internal Runtime encapsulation
 - React Context
 - Internal architecture layer
 - Internal Root model
 - Internal RootRegistry
+- Internal React Lifecycle Plugin
+- React lifecycle integration
+- Root registration
+- Root cleanup
+- Mount / Unmount synchronization
 - React package unit tests
 - React integration tests
 
@@ -89,8 +93,6 @@ The project has completed **Phase 1 — Core** and entered **Phase 2 — React I
 
 ### In Progress
 
-- React integration
-- React lifecycle foundation
 - Component tracking foundation
 
 ---
@@ -99,6 +101,7 @@ The project has completed **Phase 1 — Core** and entered **Phase 2 — React I
 
 - Hook tracking
 - State tracking
+- Render tracking
 - Timeline
 - DevTools panel
 - Inspector
@@ -163,14 +166,14 @@ Both Core and React packages are expected to follow the same quality standards.
 
 ## Current Focus
 
-The current focus is building the React integration layer on top of the completed Core package.
+The current focus is building the component inspection infrastructure on top of the completed React lifecycle integration.
 
 Current work includes:
 
-- React lifecycle integration
-- Internal React lifecycle plugin
-- Root registration
 - Component tracking foundation
+- Component registry design
+- React runtime integration
+- Render tracking foundation
 
 The Playground package continues to serve as the primary integration environment.
 
@@ -204,19 +207,19 @@ Current examples include:
 - Localized type assertions where TypeScript cannot express safe generic relationships.
 - Runtime implementation hidden behind the public `Insight` abstraction.
 - Internal implementation isolated from the public API.
+- React lifecycle isolated behind an internal lifecycle plugin.
 
 ---
 
 ## Next Milestone
 
-The next milestone focuses on expanding the React integration layer.
+The next milestone focuses on introducing the component tracking infrastructure.
 
 Immediate goals include:
 
-- Internal React lifecycle plugin
-- Root registration
-- Component tracking
-- Render tracking
+- Component Registry
+- Component lifecycle tracking
+- Render tracking foundation
 - Hook tracking foundation
 
 Longer-term goals include:
@@ -226,4 +229,4 @@ Longer-term goals include:
 - Inspector
 - Session management
 
-The completed Core package, React package foundation and automated Quality Gate provide a stable platform for the remaining phases of development.
+The completed Core package, React lifecycle integration and automated Quality Gate provide a stable platform for implementing the component inspection pipeline.

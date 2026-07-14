@@ -432,3 +432,47 @@ Reason:
 Follow the YAGNI principle and avoid introducing abstractions before they provide concrete value.
 
 This keeps the React package simple while allowing future architecture to evolve from real use cases instead of predictions.
+
+---
+
+## 2026-07-14
+
+### React lifecycle is implemented as an internal Runtime plugin
+
+React lifecycle behavior is implemented as an internal plugin registered through the existing Runtime plugin system.
+
+The lifecycle plugin is responsible for synchronizing React root mount and unmount events with the internal `RootRegistry`.
+
+`InsightProvider` owns only the lifecycle integration point. It does not implement registration logic itself.
+
+Reason:
+
+Reuse the existing Runtime plugin architecture instead of introducing a React-specific lifecycle mechanism.
+
+This keeps the React package aligned with the Core architecture, preserves a single plugin lifecycle model, and avoids unnecessary abstractions.
+
+---
+
+## 2026-07-14
+
+### Runtime remains the single owner of lifecycle management
+
+React-specific lifecycle events are delegated to the Runtime through plugin registration.
+
+Neither `InsightProvider` nor React hooks manage plugin lifecycles directly beyond registering the internal lifecycle plugin.
+
+Reason:
+
+Maintain a single source of truth for plugin lifecycle management and keep React integration focused solely on bridging React with the Runtime.
+
+---
+
+## 2026-07-14
+
+### Internal Runtime access is isolated behind helper utilities
+
+The internal Runtime and supporting infrastructure are accessed through dedicated internal helper functions rather than exposing implementation details throughout the React package.
+
+Reason:
+
+Reduce coupling between internal modules, improve maintainability, and preserve the flexibility to refactor the internal implementation without affecting the public API.
