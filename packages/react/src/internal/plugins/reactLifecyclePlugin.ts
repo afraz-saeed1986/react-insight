@@ -20,7 +20,7 @@ export function createReactLifecyclePlugin(
     },
 
     destroy() {
-      // TODO
+      options.registry.unregister(root.id);
     },
   });
 }

@@ -22,4 +22,25 @@ describe("createReactLifecyclePlugin", () => {
 
     expect(registry.size).toBe(1);
   });
+
+  it("unregisters the root during destroy", async () => {
+    const registry = new RootRegistry();
+
+    const plugin = createReactLifecyclePlugin({
+      registry,
+    });
+
+    await plugin.setup({
+      emit() {},
+      on() {
+        return () => {};
+      },
+    });
+
+    expect(registry.size).toBe(1);
+
+    await plugin.destroy?.();
+
+    expect(registry.size).toBe(0);
+  });
 });
