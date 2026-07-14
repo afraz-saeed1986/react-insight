@@ -3,18 +3,18 @@
 ## Overview
 
 ```
-                 Runtime
-                    │
-     ┌──────────────┼──────────────┐
-     │              │              │
-     ▼              ▼              ▼
- Event Emitter   PluginManager   Public API
-    (mitt)             │
-                        ▼
-                 InsightPlugin
+                     Runtime
                         │
-                        ▼
-                 PluginContext
+        ┌───────────────┼────────────────┐
+        │               │                │
+        ▼               ▼                ▼
+   EventBus       PluginManager      Public API
+        │               │
+        ▼               ▼
+ SubscriptionRegistry  InsightPlugin
+        │               │
+        ▼               ▼
+  Subscription     PluginContext
 ```
 
 ---
@@ -49,6 +49,19 @@ Responsible only for:
 - Clearing registered plugins
 
 It has **no knowledge** about plugin lifecycle or events.
+
+---
+
+### EventBus
+
+Responsible for:
+
+- Event dispatching
+- Event subscriptions
+- Subscription cleanup
+- Strongly typed event communication
+
+The EventBus implementation remains internal to the Core package.
 
 ---
 
@@ -178,6 +191,7 @@ Plugins are destroyed in **reverse registration order (LIFO)**.
 - PluginManager stores plugins only.
 - Plugins never access Runtime directly.
 - Plugins communicate only through PluginContext.
+- EventBus remains an internal implementation detail.
 - Event emitter implementation is private.
 - Public API is strongly typed using generics.
 - Plugin names are unique within a Runtime instance.
@@ -219,7 +233,7 @@ Current documented exception:
 
 ## Testing Strategy
 
-The Core package is protected by multiple quality gates.
+The project follows a test-first approach for every public API.
 
 ### Static Analysis
 
@@ -228,7 +242,9 @@ Every change must pass:
 - ESLint (Flat Config)
 - TypeScript strict type checking
 
-### Unit Tests
+---
+
+### Core Unit Tests
 
 Current coverage includes:
 
@@ -239,7 +255,9 @@ Current coverage includes:
 - SubscriptionRegistry
 - Built-in Logger Plugin
 
-### Integration Tests
+---
+
+### Core Integration Tests
 
 Current coverage includes:
 
@@ -250,6 +268,20 @@ Current coverage includes:
 - Plugin registration rollback
 - PluginContext communication
 - Playground integration
+
+---
+
+### React Package Tests
+
+Current coverage includes:
+
+- `createInsight()`
+- `InsightProvider`
+- `useInsight()`
+- Provider integration
+- Public API encapsulation
+
+---
 
 ### Coverage Requirements
 
@@ -264,7 +296,7 @@ Minimum thresholds:
 
 Current Core coverage is approximately:
 
-- Statements: **91%**
+- Statements: **92%**
 - Lines: **91%**
 - Functions: **88%**
 - Branches: **85%**
@@ -283,22 +315,28 @@ coverage/
 packages
 │
 ├── core
+├── react
 ├── playground
 └── eslint-config
 ```
 
+### core
+
+Framework-agnostic Runtime implementation.
+
+### react
+
+Official React integration layer.
+
+### playground
+
+Integration application used to validate package exports, Runtime behavior and Developer Experience before publishing.
+
+---
+
 The Playground package is the first real consumer of the Core package.
 
-Its purpose is to validate:
-
-- Public package exports
-- Workspace package resolution
-- Plugin lifecycle
-- Runtime behavior
-- Developer Experience (DX)
-- Packaging before npm publishing
-
-Playground imports the Core package exactly as an external application would:
+It imports the Core package exactly as an external application would:
 
 ```ts
 import { Runtime, loggerPlugin } from "@react-insight/core";
@@ -339,7 +377,9 @@ Every change should successfully pass the following checks before being committe
 pnpm lint
 pnpm typecheck
 pnpm build
-pnpm --filter @react-insight/core test --coverage
+pnpm test
 ```
+
+Continuous Integration verifies these quality gates automatically on every push and pull request.
 
 A change is considered complete only after all quality gates pass successfully.

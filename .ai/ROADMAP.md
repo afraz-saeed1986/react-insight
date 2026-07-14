@@ -54,12 +54,27 @@
 
 ## Phase 2 — React
 
+### Foundation
+
+- [x] React package
+- [x] Package build configuration
+- [x] Public package exports
+- [x] Internal architecture layer
+
+### Public API
+
+- [x] `createInsight()`
+- [x] `InsightProvider`
+- [x] `useInsight()`
+- [x] Runtime encapsulation
+- [x] Public API tests
+- [x] React integration tests
+
 ### React Runtime
 
-- [ ] React package
-- [ ] `createInsight()`
-- [ ] React Runtime integration
 - [ ] Root registration
+- [ ] React Runtime integration
+- [ ] Runtime lifecycle synchronization
 
 ### Tracking
 

@@ -330,3 +330,89 @@ The workflow runs against the supported Node.js LTS versions using a matrix stra
 Reason:
 
 Ensure every contribution satisfies the project's quality standards before being merged, while validating compatibility across supported Node.js versions.
+
+---
+
+## 2026-07-13
+
+### Official React integration package
+
+React integration is implemented as a dedicated workspace package:
+
+```text
+@react-insight/react
+```
+
+Reason:
+
+Keep the Core package framework-agnostic while providing an idiomatic React API.
+
+---
+
+## 2026-07-13
+
+### Runtime encapsulation
+
+The Runtime is no longer exposed through the public React API.
+
+Instead, applications interact with the `Insight` abstraction.
+
+The Runtime is stored internally using a symbol-based implementation detail.
+
+Reason:
+
+Prevent coupling to internal implementation details and preserve API stability during future refactors.
+
+---
+
+## 2026-07-13
+
+### Insight as the public facade
+
+The `Insight` object is the only public entry point for application code.
+
+It exposes only high-level operations such as:
+
+- `use()`
+- `destroy()`
+
+Reason:
+
+Expose a small, stable API while allowing the internal Runtime implementation to evolve independently.
+
+---
+
+## 2026-07-13
+
+### Internal implementation layer
+
+Private implementation details are isolated under an `internal/` directory.
+
+Examples include:
+
+- Runtime symbol
+- Internal Runtime holder types
+
+These modules are never exported from the package entry point.
+
+Reason:
+
+Clearly separate public APIs from implementation details and reduce the risk of accidental public exports.
+
+---
+
+## 2026-07-13
+
+### React public API testing
+
+The React package follows the same public API testing strategy as the Core package.
+
+Current public APIs covered by automated tests include:
+
+- `createInsight()`
+- `InsightProvider`
+- `useInsight()`
+
+Reason:
+
+Protect the React integration layer against regressions while maintaining a stable developer experience.

@@ -20,53 +20,82 @@ Long-term goals:
 
 ## Current Status
 
-The project has completed **Phase 1 — Core**.
+The project has completed **Phase 1 — Core** and entered **Phase 2 — React Integration**.
 
 ### Completed
+
+#### Workspace & Tooling
 
 - pnpm workspace
 - TypeScript project setup
 - tsup build configuration
+- Shared ESLint Flat Config
+- GitHub Actions CI
+- Automated Quality Gate
+
+#### Core
+
 - Runtime implementation
 - Generic Runtime
 - Runtime destruction lifecycle (`destroy()`)
-- Runtime state protection after destruction
-- PluginManager implementation
+- Runtime state protection
+- PluginManager
 - Generic PluginManager
 - Plugin lifecycle
 - Generic PluginContext
 - Generic InsightPlugin
 - Generic `definePlugin()`
+- EventBus
+- Subscription
+- SubscriptionRegistry
 - Built-in Logger Plugin
 - Logger Plugin factory API
-- EventBus implementation
-- Subscription implementation
-- SubscriptionRegistry implementation
+- Atomic plugin registration
+- Rollback on setup failure
+
+#### Testing
+
 - Runtime integration tests
+- PluginManager unit tests
 - EventBus unit tests
 - Subscription unit tests
 - SubscriptionRegistry unit tests
-- PluginManager unit tests
 - Logger Plugin integration tests
-- Playground package
+- Coverage thresholds
+
+#### Playground
+
 - Workspace integration
 - Public package export validation
-- Atomic plugin registration with rollback on setup failure
-- Shared ESLint Flat Config
-- TypeScript strict configuration
-- Coverage thresholds
-- Core architecture documentation
-- GitHub Actions CI
-- Automated Quality Gate
+- Runtime validation
+- Developer Experience validation
+
+#### React Package
+
+- `@react-insight/react`
+- `createInsight()`
+- `InsightProvider`
+- `useInsight()`
+- Internal Runtime encapsulation
+- React Context
+- Internal architecture layer
+- React package unit tests
+- React integration tests
+
+---
 
 ### In Progress
 
-- Release preparation
+- React integration
+- Root registration
+- Component tracking foundation
+
+---
 
 ### Not Started
 
-- React package
-- React hooks tracking
+- Hook tracking
+- State tracking
 - Timeline
 - DevTools panel
 - Inspector
@@ -77,11 +106,13 @@ The project has completed **Phase 1 — Core**.
 ## Technology Stack
 
 - TypeScript
+- React 19
 - pnpm Workspace
 - tsup
 - Vite
 - mitt
 - Vitest
+- Testing Library
 - ESLint (Flat Config)
 - GitHub Actions
 
@@ -94,7 +125,7 @@ The project has completed **Phase 1 — Core**.
 - Incremental Refactoring
 - Type Safety
 - Strict TypeScript
-- Test-Driven Refactoring
+- Test-Driven Development
 - Coverage-Driven Development
 - Documentation synchronized with implementation
 - No unnecessary abstractions
@@ -121,31 +152,26 @@ Every contribution is validated by the automated Quality Gate, which executes:
 - TypeScript type checking
 - Build
 - Unit tests
-- Coverage thresholds
+- Coverage verification
+
+Both Core and React packages are expected to follow the same quality standards.
 
 ---
 
 ## Current Focus
 
-The current focus is preparing the project for its first public release before starting React-specific features.
+The current focus is building the React integration layer on top of the completed Core package.
 
 Current work includes:
 
-- Release preparation
-- npm publishing readiness
-- Phase 2 planning
+- React Runtime integration
+- Root registration
+- React lifecycle integration
+- Component tracking foundation
 
-The Playground package is used as the primary integration environment.
+The Playground package continues to serve as the primary integration environment.
 
-It imports the Core package exactly as an external consumer would:
-
-```ts
-import { Runtime, loggerPlugin } from "@react-insight/core";
-
-const runtime = new Runtime();
-
-await runtime.registerPlugin(loggerPlugin());
-```
+It imports published workspace packages exactly as external applications will.
 
 Rules:
 
@@ -157,8 +183,8 @@ This validates:
 
 - Package exports
 - Public API
-- Plugin lifecycle
-- Runtime destruction
+- Runtime lifecycle
+- React integration
 - Developer Experience (DX)
 - Packaging before npm publishing
 
@@ -170,22 +196,30 @@ The project preserves strict compiler settings.
 
 Known TypeScript limitations are documented instead of weakening compiler guarantees.
 
-Current example:
+Current examples include:
 
-- `SubscriptionRegistry` contains one localized and documented type assertion required because TypeScript cannot fully express key-dependent `Map` value types.
+- Localized type assertions where TypeScript cannot express safe generic relationships.
+- Runtime implementation hidden behind the public `Insight` abstraction.
+- Internal implementation isolated from the public API.
 
 ---
 
 ## Next Milestone
 
-With **Phase 1 — Core** complete, the next milestone is **Phase 2 — React Integration**.
+The next milestone focuses on expanding the React integration layer.
 
-Initial Phase 2 goals include:
+Immediate goals include:
 
-- React package
-- `createInsight()`
-- React Runtime integration
 - Root registration
-- Component tracking foundation
+- Component tracking
+- Render tracking
+- Hook tracking foundation
 
-The completed Core package and automated Quality Gate provide a stable foundation for the next phase of development.
+Longer-term goals include:
+
+- Timeline
+- DevTools
+- Inspector
+- Session management
+
+The completed Core package, React package foundation and automated Quality Gate provide a stable platform for the remaining phases of development.

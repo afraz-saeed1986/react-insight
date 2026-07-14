@@ -1,6 +1,7 @@
 import type { PropsWithChildren } from "react";
 
 import { InsightContext } from "./context";
+import { useInsightLifecycle } from "./internal/useInsightLifecycle";
 import type { Insight } from "./types";
 
 export interface InsightProviderProps extends PropsWithChildren {
@@ -8,6 +9,8 @@ export interface InsightProviderProps extends PropsWithChildren {
 }
 
 export function InsightProvider({ insight, children }: InsightProviderProps) {
+  useInsightLifecycle();
+
   return (
     <InsightContext.Provider value={insight}>
       {children}
