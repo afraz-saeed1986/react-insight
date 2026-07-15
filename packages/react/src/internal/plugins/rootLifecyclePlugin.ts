@@ -3,12 +3,12 @@ import { definePlugin, type InsightPlugin } from "@react-insight/core";
 import { createInternalRoot } from "../root";
 import type { RootRegistry } from "../rootRegistry";
 
-export interface ReactLifecyclePluginOptions {
+export interface RootLifecyclePluginOptions {
   readonly registry: RootRegistry;
 }
 
 export function createRootLifecyclePlugin(
-  options: ReactLifecyclePluginOptions,
+  options: RootLifecyclePluginOptions,
 ): InsightPlugin {
   const root = createInternalRoot();
 
