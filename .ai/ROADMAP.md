@@ -52,9 +52,9 @@
 
 ---
 
-## Phase 2 — React
+# Phase 2 — React
 
-### Foundation
+## Foundation
 
 - [x] React package
 - [x] Package build configuration
@@ -62,8 +62,10 @@
 - [x] Internal architecture layer
 - [x] Internal Root model
 - [x] Internal RootRegistry
+- [x] Internal Component model
+- [x] Internal ComponentRegistry
 
-### Public API
+## Public API
 
 - [x] `createInsight()`
 - [x] `InsightProvider`
@@ -72,19 +74,28 @@
 - [x] Public API tests
 - [x] React integration tests
 
-### React Runtime
+## React Runtime
 
-- [x] Internal React lifecycle plugin
+- [x] Internal Root Lifecycle Plugin
 - [x] Root registration
 - [x] Root cleanup
 - [x] React Runtime integration
 - [x] Runtime lifecycle synchronization
 - [x] Mount / Unmount synchronization
+- [x] Root lifecycle hook extraction
 
-### Tracking
+## Component Tracking
 
-- [ ] Component Registry
-- [ ] Component tracking
+### Completed
+
+- [x] Component domain model
+- [x] ComponentRegistry
+
+### Planned
+
+- [ ] Component Discovery architecture
+- [ ] Component Discovery implementation
+- [ ] ComponentRegistry synchronization
 - [ ] Render tracking
 - [ ] State tracking
 - [ ] Hook tracking
@@ -92,15 +103,15 @@
 
 ---
 
-## Phase 3 — Inspector
+# Phase 3 — Inspector
 
-### Core
+## Core
 
 - [ ] Inspector
 - [ ] Session
 - [ ] Internal communication
 
-### DevTools
+## DevTools
 
 - [ ] DevTools Panel
 - [ ] Timeline
@@ -109,20 +120,20 @@
 
 ---
 
-## Phase 4 — Release
+# Phase 4 — Release
 
-### Quality
+## Quality
 
 - [ ] Benchmarks
 - [ ] Performance profiling
 
-### Documentation
+## Documentation
 
 - [ ] Documentation
 - [ ] Examples
 - [ ] API Reference
 
-### Release
+## Release
 
 - [ ] npm publish
 - [ ] GitHub Release

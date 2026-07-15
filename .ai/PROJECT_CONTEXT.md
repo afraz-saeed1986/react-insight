@@ -81,7 +81,7 @@ The project has completed **Phase 1 — Core** and is actively progressing throu
 - Internal architecture layer
 - Internal Root model
 - Internal RootRegistry
-- Internal React Lifecycle Plugin
+- Internal Root Lifecycle Plugin
 - React lifecycle integration
 - Root registration
 - Root cleanup
@@ -94,6 +94,8 @@ The project has completed **Phase 1 — Core** and is actively progressing throu
 ### In Progress
 
 - Component tracking foundation
+- Component registry integration
+- Component discovery architecture
 
 ---
 
@@ -170,9 +172,9 @@ The current focus is building the component inspection infrastructure on top of 
 
 Current work includes:
 
-- Component tracking foundation
-- Component registry design
-- React runtime integration
+- Component discovery architecture
+- Component discovery implementation
+- Component registry integration
 - Render tracking foundation
 
 The Playground package continues to serve as the primary integration environment.
@@ -217,10 +219,10 @@ The next milestone focuses on introducing the component tracking infrastructure.
 
 Immediate goals include:
 
-- Component Registry
+- Component Discovery
+- Component Registry synchronization
 - Component lifecycle tracking
 - Render tracking foundation
-- Hook tracking foundation
 
 Longer-term goals include:
 

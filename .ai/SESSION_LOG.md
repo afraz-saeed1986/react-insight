@@ -423,3 +423,68 @@ Next session:
 - Design the Component Tracking architecture
 - Implement the internal Component Registry
 - Begin the component tracking foundation
+
+---
+
+## Session 12
+
+Completed:
+
+### Component Tracking Foundation
+
+- Introduced the internal `Component` domain model.
+- Implemented the internal `ComponentRegistry`.
+- Extended `createInsight()` to own a `ComponentRegistry` instance.
+- Extended the internal `Insight` implementation with component registry support.
+
+### React Runtime
+
+- Extracted root lifecycle management into `useRootLifecycle()`.
+- Kept `useInsightLifecycle()` as the orchestration layer.
+- Preserved Runtime ownership of the plugin lifecycle.
+
+### Internal Architecture
+
+- Renamed `reactLifecyclePlugin` to `rootLifecyclePlugin`.
+- Renamed `createReactLifecyclePlugin()` to `createRootLifecyclePlugin()`.
+- Renamed `ReactLifecyclePluginOptions` to `RootLifecyclePluginOptions`.
+- Improved internal naming consistency.
+- Kept `ComponentRegistry` independent from React internals.
+
+### Validation
+
+Verified the complete React package Quality Gate:
+
+- ESLint
+- TypeScript type checking
+- Build
+- Unit tests
+- Integration tests
+
+All checks passed successfully.
+
+### Documentation
+
+Updated:
+
+- ARCHITECTURE.md
+- DECISIONS.md
+- PROJECT_CONTEXT.md
+- REACT_ARCHITECTURE.md
+- ROADMAP.md
+
+Current status:
+
+- Phase 1 (Core) is complete.
+- React package foundation is complete.
+- React root lifecycle integration is complete.
+- Component tracking foundation has been established.
+- Internal architecture is synchronized with the implementation.
+- Documentation is synchronized with the implementation.
+
+Next session:
+
+- Finalize the Component Discovery architecture.
+- Implement the Component Discovery subsystem.
+- Synchronize `ComponentRegistry` with discovered React components.
+- Begin Render Tracking.

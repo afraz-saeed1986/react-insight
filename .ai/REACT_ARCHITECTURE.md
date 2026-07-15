@@ -95,6 +95,7 @@ Responsible for:
 
 - Creating the internal Runtime.
 - Creating the internal RootRegistry.
+- Creating the internal ComponentRegistry.
 - Returning the public `Insight` instance.
 - Delegating plugin registration.
 - Delegating plugin unregistration.
@@ -130,7 +131,7 @@ Consumers should never access React Context directly.
 
 # React Lifecycle
 
-The React package integrates with the Core Runtime through an internal lifecycle plugin.
+The React package integrates with the Core Runtime through an internal root lifecycle plugin.
 
 The lifecycle integration is intentionally isolated behind `useInsightLifecycle()`.
 
@@ -143,7 +144,10 @@ InsightProvider
 useInsightLifecycle()
         │
         ▼
-createReactLifecyclePlugin()
+useRootLifecycle()
+        │
+        ▼
+createRootLifecyclePlugin()
         │
         ▼
 Runtime.registerPlugin()
@@ -166,7 +170,7 @@ Plugin.destroy()
 RootRegistry.unregister()
 ```
 
-This design ensures that the Runtime remains the sole owner of the plugin lifecycle while React is responsible only for integrating Runtime with the React component lifecycle.
+This design ensures that the Runtime remains the sole owner of the plugin lifecycle while React is responsible only for integrating Runtime with the React lifecycle.
 
 ---
 
@@ -202,8 +206,10 @@ Responsibilities:
 - `useInsight()`
 - React Context
 - React lifecycle integration
-- Internal React lifecycle infrastructure
+- Internal root lifecycle infrastructure
 - Internal lifecycle plugins
+- RootRegistry
+- ComponentRegistry
 - Future React-specific features
 
 The React package consumes the Runtime provided by `@react-insight/core`.
@@ -240,8 +246,10 @@ Current internal implementation includes:
 - Internal Runtime access helpers
 - Internal Root model
 - Internal RootRegistry
-- Internal React lifecycle hook
-- Internal React Lifecycle Plugin
+- Internal Component model
+- Internal ComponentRegistry
+- Internal React lifecycle hooks
+- Internal Root Lifecycle Plugin
 - Private React Context
 
 This separation allows internal refactoring without introducing breaking API changes.
@@ -272,16 +280,19 @@ packages/react
 │   │   └── index.ts
 │   │
 │   └── internal/
-│       ├── index.ts
+│       ├── component.ts
+│       ├── componentRegistry.ts
 │       ├── getInternalInsight.ts
+│       ├── index.ts
 │       ├── root.ts
 │       ├── rootRegistry.ts
 │       ├── runtime.ts
 │       ├── useInsightLifecycle.ts
+│       ├── useRootLifecycle.ts
 │       │
 │       └── plugins/
-│           ├── reactLifecyclePlugin.ts
-│           └── reactLifecyclePlugin.test.ts
+│           ├── rootLifecyclePlugin.ts
+│           └── rootLifecyclePlugin.test.ts
 │
 ├── tsup.config.ts
 ├── tsconfig.json
@@ -300,6 +311,7 @@ Responsibilities:
 
 - Create the internal Runtime.
 - Create the internal RootRegistry.
+- Create the internal ComponentRegistry.
 - Hide Runtime implementation details.
 - Delegate Runtime operations.
 - Return the public API.
@@ -336,18 +348,40 @@ Future hooks may include:
 
 ---
 
-## useInsightLifecycle.ts
+## componentRegistry.ts
 
-Acts as the single integration point between React and the Runtime.
+Stores the internal representation of mounted React components.
 
 Responsibilities:
 
-- Create the internal lifecycle plugin
-- Register the plugin when the Provider mounts
-- Unregister the plugin during cleanup
-- Keep React lifecycle synchronization isolated from the public API
+- Register components
+- Unregister components
+- Lookup components
+- Maintain framework-agnostic component state
 
-This hook is considered an internal implementation detail.
+---
+
+## useInsightLifecycle.ts
+
+Acts as the internal orchestration point for React integration.
+
+Responsibilities:
+
+- Coordinate internal lifecycle hooks
+- Keep the public API isolated from React internals
+
+---
+
+## useRootLifecycle.ts
+
+Coordinates the React root lifecycle with the internal Root Lifecycle Plugin.
+
+Responsibilities:
+
+- Create the Root Lifecycle Plugin
+- Register the plugin on mount
+- Unregister the plugin on cleanup
+- Synchronize RootRegistry with React lifecycle
 
 ---
 
@@ -367,7 +401,7 @@ Contains internal Runtime integration plugins.
 
 Current plugins:
 
-- React Lifecycle Plugin
+- Root Lifecycle Plugin
 
 These plugins are not part of the public API and may evolve independently from the public React interface.
 
@@ -384,7 +418,9 @@ Current contents:
 - Internal Runtime helpers
 - Internal Root model
 - RootRegistry
-- React lifecycle hook
+- Internal Component model
+- ComponentRegistry
+- React lifecycle hooks
 - Internal lifecycle plugins
 
 Nothing inside this directory is part of the public API.
@@ -416,7 +452,8 @@ Current test coverage includes:
 - `InsightProvider`
 - `useInsight()`
 - `RootRegistry`
-- React Lifecycle Plugin
+- `ComponentRegistry`
+- Root Lifecycle Plugin
 - Provider lifecycle integration
 - Mount / Unmount synchronization
 - Public API encapsulation

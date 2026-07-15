@@ -198,11 +198,11 @@ Current architecture includes:
 - Internal Root model
 - Internal RootRegistry
 - Internal React lifecycle hook
-- Internal React Lifecycle Plugin
+- Internal Root Lifecycle Plugin
 
 The React package owns React-specific behavior only and delegates all Runtime responsibilities to `@react-insight/core`.
 
-React roots are synchronized with the Runtime through an internal lifecycle plugin, while the Runtime remains the sole owner of the plugin lifecycle.
+React roots are synchronized with the Runtime through an internal root lifecycle plugin, while the Runtime remains the sole owner of the plugin lifecycle.
 
 ---
 

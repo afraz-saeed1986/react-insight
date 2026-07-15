@@ -476,3 +476,31 @@ The internal Runtime and supporting infrastructure are accessed through dedicate
 Reason:
 
 Reduce coupling between internal modules, improve maintainability, and preserve the flexibility to refactor the internal implementation without affecting the public API.
+
+---
+
+## 2026-07-15
+
+### Component Registry is independent from React internals
+
+The `ComponentRegistry` is implemented as a framework-agnostic state container.
+
+It stores only React Insight domain models and has no knowledge of React Fiber or renderer-specific implementation details.
+
+Reason:
+
+Keep the registry reusable, testable and independent from React internals. React-specific discovery mechanisms are responsible for translating renderer data into registry updates.
+
+---
+
+## 2026-07-15
+
+### Component Discovery is design-first
+
+Implementation of the Component Discovery subsystem is intentionally postponed until its architecture is finalized.
+
+No renderer abstraction, Fiber bridge or discovery service will be introduced before a concrete design with real producers and consumers exists.
+
+Reason:
+
+Follow YAGNI and avoid premature abstractions. Every new module should provide immediate value instead of acting as a placeholder for future functionality.
