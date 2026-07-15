@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import type { Insight } from "../types";
 
 import { getInternalInsight } from "./getInternalInsight";
-import { createReactLifecyclePlugin } from "./plugins/reactLifecyclePlugin";
+import { createRootLifecyclePlugin } from "./plugins/rootLifecyclePlugin";
 
 /**
  * Registers the internal root lifecycle plugin.
@@ -14,7 +14,7 @@ export function useRootLifecycle(insight: Insight): void {
   const internalInsight = getInternalInsight(insight);
 
   useEffect(() => {
-    const plugin = createReactLifecyclePlugin({
+    const plugin = createRootLifecyclePlugin({
       registry: internalInsight.rootRegistry,
     });
 

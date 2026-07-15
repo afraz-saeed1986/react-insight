@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { RootRegistry } from "../rootRegistry";
-import { createReactLifecyclePlugin } from "./reactLifecyclePlugin";
+import { createRootLifecyclePlugin } from "./rootLifecyclePlugin";
 
 describe("createReactLifecyclePlugin", () => {
   it("registers a root during setup", async () => {
     const registry = new RootRegistry();
 
-    const plugin = createReactLifecyclePlugin({
+    const plugin = createRootLifecyclePlugin({
       registry,
     });
 
@@ -26,7 +26,7 @@ describe("createReactLifecyclePlugin", () => {
   it("unregisters the root during destroy", async () => {
     const registry = new RootRegistry();
 
-    const plugin = createReactLifecyclePlugin({
+    const plugin = createRootLifecyclePlugin({
       registry,
     });
 

@@ -7,7 +7,7 @@ export interface ReactLifecyclePluginOptions {
   readonly registry: RootRegistry;
 }
 
-export function createReactLifecyclePlugin(
+export function createRootLifecyclePlugin(
   options: ReactLifecyclePluginOptions,
 ): InsightPlugin {
   const root = createInternalRoot();
