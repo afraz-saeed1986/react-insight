@@ -3,6 +3,7 @@ import type { Runtime } from "@react-insight/core";
 import type { Insight } from "../types";
 
 import type { RootRegistry } from "./rootRegistry";
+import type { ComponentRegistry } from "./componentRegistry";
 /**
  * Internal symbol used to associate an Insight instance
  * with its underlying Runtime.
@@ -13,7 +14,10 @@ export const runtimeSymbol: unique symbol = Symbol("runtime");
 
 export interface RuntimeHolder {
   readonly [runtimeSymbol]: Runtime;
+
   readonly rootRegistry: RootRegistry;
+
+  readonly componentRegistry: ComponentRegistry;
 
   unregisterPlugin(name: string): Promise<void>;
 }
