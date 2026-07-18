@@ -1,6 +1,7 @@
 import type { Insight } from "../types";
 
 import { useRootLifecycle } from "./useRootLifecycle";
+import { useComponentDiscovery } from "./useComponentDiscovery";
 
 /**
  * Coordinates React Insight lifecycle integrations.
@@ -10,4 +11,5 @@ import { useRootLifecycle } from "./useRootLifecycle";
  */
 export function useInsightLifecycle(insight: Insight): void {
   useRootLifecycle(insight);
+  useComponentDiscovery(insight);
 }

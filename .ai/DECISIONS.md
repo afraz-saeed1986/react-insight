@@ -504,3 +504,69 @@ No renderer abstraction, Fiber bridge or discovery service will be introduced be
 Reason:
 
 Follow YAGNI and avoid premature abstractions. Every new module should provide immediate value instead of acting as a placeholder for future functionality.
+
+---
+
+## 2026-07-18
+
+### Renderer identity is deferred
+
+`ComponentNode` and its upstream discovery models do not include a
+`rendererId` field today.
+
+Only `react-dom` is supported. No consumer (Registry, Mapper, or any
+Plugin) reads or needs renderer identity yet.
+
+The DevTools hook's `renderers: Map<RendererID, ReactRenderer>` shape
+shows multi-renderer support is architecturally possible, but adding
+the field now would be a placeholder with no real consumer.
+
+Reason:
+
+Follow the same test already used for Component Discovery: no field
+is added to a domain model without a real consumer. If multi-renderer
+support (React Native, react-three-fiber, etc.) is ever required, it
+is expected to be a major-version change, not an incremental addition.
+
+---
+
+## 2026-07-18
+
+### Hook Adapter event contract is limited to Commit and Unmount
+
+The Hook Adapter only reacts to `onCommitFiberRoot` and
+`onCommitFiberUnmount`.
+
+`onPostCommitFiberRoot` is intentionally not wired, even though React
+provides it today.
+
+Reason:
+
+No current consumer (Component Registry or any planned Tracking
+subsystem) needs to distinguish "Fiber tree committed" from "effects
+have run". Wiring it now would be an unused extension point, which
+Principle 5 (No Premature Abstraction) prohibits. `onPostCommitFiberRoot`
+remains available on the hook and can be adopted later (e.g. for Render
+Tracking) without changing this contract.
+
+---
+
+## 2026-07-18
+
+### Component Discovery assumes a single React application per page
+
+The Hook Adapter connects to the page-global `__REACT_DEVTOOLS_GLOBAL_HOOK__`,
+which reports every Fiber commit on the page, not only commits belonging to
+the application wrapped by `InsightProvider`.
+
+No container-based filtering is implemented yet. Discovery currently
+attributes every discovered component to the first `InternalRoot` found in
+`RootRegistry`.
+
+Reason:
+
+The existing lifecycle plugin (`react:lifecycle`) already assumes a single
+active root per Insight instance (fixed plugin name, throws on duplicate
+registration). Adding container-based correlation now would be a feature
+with no current multi-root consumer. This assumption must be revisited
+before multi-root or multi-application support is added.

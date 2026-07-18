@@ -39,7 +39,7 @@ export default tseslint.config(
   },
 
   {
-    files: ["**/plugins/builtin/logger.ts"],
+    files: ["**/plugins/builtin/logger.ts", "**/discovery/hookAdapter.ts"],
 
     rules: {
       "no-console": "off",

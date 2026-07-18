@@ -58,4 +58,27 @@ describe("ComponentRegistry", () => {
 
     expect(registry.size).toBe(0);
   });
+
+  it("registers a new component on first sync", () => {
+    const registry = new ComponentRegistry();
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null });
+
+    const component = registry.get("app");
+
+    expect(component?.status).toBe("mounted");
+    expect(component?.unmountedAt).toBeNull();
+  });
+
+  it("updates structural fields without resetting mountedAt on repeated sync", () => {
+    const registry = new ComponentRegistry();
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null });
+    const firstMountedAt = registry.get("app")?.mountedAt;
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "AppRenamed", parentId: null });
+
+    expect(registry.get("app")?.displayName).toBe("AppRenamed");
+    expect(registry.get("app")?.mountedAt).toBe(firstMountedAt);
+  });
 });
