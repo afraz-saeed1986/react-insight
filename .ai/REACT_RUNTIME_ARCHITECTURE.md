@@ -2,7 +2,7 @@
 
 > Status: Draft
 >
-> Last Updated: YYYY-MM-DD
+> Last Updated: 2026-07-18
 >
 > This document defines the long-term architecture of the React runtime package. It serves as the primary architectural reference for all React-specific runtime features, including component discovery, tracking, inspection, and future DevTools integration.
 
@@ -616,7 +616,8 @@ One extracted record from Traversal.
 
 **Output**
 
-A partial `ComponentNode` containing only structural fields.
+A partial `ComponentNode` containing only structural fields
+(`ComponentSyncInput`).
 
 **Must not know**
 
@@ -640,37 +641,44 @@ is trivially testable with plain fixtures.
 
 **Responsibility**
 
-Own all Component state. Compare each incoming partial `ComponentNode`
+Own all Component state. Compare each incoming `ComponentSyncInput`
 against currently stored state to decide whether it represents a
-mount, an update, or (via explicit unmount events) a removal. Own
-`mountedAt`, `unmountedAt`, and `status`. Emit change notifications
-through the existing Core event system.
+mount or an update (`sync()`), and remove state on explicit unmount
+notifications (`unregister()`). Own `mountedAt`, `unmountedAt`, and
+`status`.
 
 **Input**
 
-Partial `ComponentNode` values (from Mapper) and unmount notifications
-(from the Hook Adapter → Fiber Adapter → Traversal path).
+`ComponentSyncInput` values (from Mapper, via `sync()`) and component
+ids to remove (from the Hook Adapter → Fiber Adapter → Traversal
+unmount path, via `unregister()`).
 
 **Output**
 
-Change events published through the existing Runtime event system, and
-a query API (`get`, `getAll`, `getByRoot`) for consumers.
+A query API for consumers: `get(id)`, `has(id)`, `values()`, `size`.
 
 **Must not know**
 
 - Fiber, Traversal, or how discovery happened.
 
+**Implementation status**
+
+Change-event emission and root-scoped querying (`getByRoot`) are not
+implemented yet — see "Deferred Concerns" below. `register()` (which
+throws on a duplicate id) is retained separately from `sync()` for
+callers where a duplicate id is a genuine error rather than an update.
+
 ---
 
 ## Cross-Layer Data Rules
 
-| Boundary                     | Model that crosses it                            | Allowed below this boundary?                             |
-| ---------------------------- | ------------------------------------------------ | -------------------------------------------------------- |
-| React → Hook Adapter         | Raw React callback arguments                     | No — never leaves Hook Adapter                           |
-| Hook Adapter → Fiber Adapter | Internal runtime event (raw Fiber/FiberRoot ref) | No — never leaves Fiber Adapter                          |
-| Fiber Adapter → Traversal    | Single Fiber entry point                         | No — never leaves Traversal                              |
-| Traversal → Mapper           | Extracted record (no Fiber reference)            | No — internal contract only between Traversal and Mapper |
-| Mapper → Registry → Plugins  | `ComponentNode`                                  | Yes — the only model allowed to travel the full pipeline |
+| Boundary                     | Model that crosses it                            | Allowed below this boundary?                              |
+| ---------------------------- | ------------------------------------------------ | --------------------------------------------------------- |
+| React → Hook Adapter         | Raw React callback arguments                     | No — never leaves Hook Adapter                            |
+| Hook Adapter → Fiber Adapter | Internal runtime event (raw Fiber/FiberRoot ref) | No — never leaves Fiber Adapter                           |
+| Fiber Adapter → Traversal    | Single Fiber entry point                         | No — never leaves Traversal                               |
+| Traversal → Mapper           | `DiscoveredComponent` (no Fiber reference)       | No — internal contract only between Traversal and Mapper  |
+| Mapper → Registry → Plugins  | `ComponentSyncInput` / `ComponentNode`           | Yes — the only models allowed to travel the full pipeline |
 
 No type whose name or shape depends on React Fiber may cross the
 Mapper boundary. This is the same boundary already defined in
@@ -685,6 +693,13 @@ tracked in `DECISIONS.md`:
 
 - Renderer identity (`rendererId`) — see 2026-07-18.
 - `onPostCommitFiberRoot` — see 2026-07-18.
+- `ComponentRegistry` change-event emission through the Core event
+  system — no current consumer (no Plugin observes Registry changes
+  yet); Plugins that need discovery results call the Registry's query
+  API directly today.
+- `ComponentRegistry.getByRoot()` — no current consumer; discovery
+  currently assumes a single root (see `DECISIONS.md`, 2026-07-18 —
+  single React application per page).
 
-Both may be introduced later without breaking this contract, provided
+Each may be introduced later without breaking this contract, provided
 a real consumer is identified first.

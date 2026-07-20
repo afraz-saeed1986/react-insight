@@ -90,12 +90,19 @@
 
 - [x] Component domain model
 - [x] ComponentRegistry
+- [x] Component Discovery architecture (Section 6 finalized in `REACT_RUNTIME_ARCHITECTURE.md`)
+- [x] ComponentRegistry synchronization (`ComponentRegistry.sync()`)
+- [x] Component Discovery implementation — mount/update (Hook Adapter, Fiber Adapter, Traversal, Mapper, wired via `componentDiscoveryPlugin`)
+
+### In Progress
+
+- [ ] Component Discovery implementation — unmount (`onCommitFiberUnmount` wiring written; Quality Gate not yet verified/committed)
 
 ### Planned
 
-- [ ] Component Discovery architecture
-- [ ] Component Discovery implementation
-- [ ] ComponentRegistry synchronization
+- [ ] Root-container correlation (multi-application page support)
+- [ ] ComponentRegistry change-event emission
+- [ ] ComponentRegistry `getByRoot()` query
 - [ ] Render tracking
 - [ ] State tracking
 - [ ] Hook tracking

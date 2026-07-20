@@ -174,6 +174,86 @@ This design ensures that the Runtime remains the sole owner of the plugin lifecy
 
 ---
 
+# Component Discovery
+
+The React package integrates Component Discovery through a second internal plugin, following the same integration pattern as the root lifecycle plugin.
+
+The discovery integration is isolated behind `useComponentDiscovery()`, registered alongside `useRootLifecycle()` inside `useInsightLifecycle()`.
+
+Current discovery flow:
+
+```text
+InsightProvider
+        │
+        ▼
+useInsightLifecycle()
+        │
+        ▼
+useComponentDiscovery()
+        │
+        ▼
+createComponentDiscoveryPlugin()
+        │
+        ▼
+Runtime.registerPlugin()
+        │
+        ▼
+Plugin.setup()
+        │
+        ▼
+connectHookAdapter()
+        │
+        ▼
+__REACT_DEVTOOLS_GLOBAL_HOOK__
+
+  onCommitFiberRoot
+        │
+        ▼
+  getFiberTraversalEntry()
+        │
+        ▼
+  traverse()
+        │
+        ▼
+  mapDiscoveredComponent()
+        │
+        ▼
+  ComponentRegistry.sync()
+
+  onCommitFiberUnmount
+        │
+        ▼
+  asFiberNode() + getFiberId()
+        │
+        ▼
+  ComponentRegistry.markUnmounted()
+
+Unmount (Provider)
+        │
+        ▼
+Runtime.unregisterPlugin()
+        │
+        ▼
+Plugin.destroy()
+        │
+        ▼
+disconnect() — restores previous hook callbacks
+```
+
+The full per-layer contract (responsibility, input, output, forbidden knowledge) for Hook Adapter, Fiber Adapter, Traversal, Mapper and Component Registry is defined in `REACT_RUNTIME_ARCHITECTURE.md`, Section 6.
+
+Architectural boundary: no type whose name or shape depends on React Fiber crosses the Mapper. Only `ComponentNode` (and its structural subset, `ComponentSyncInput`) is allowed to travel from the Mapper down into `ComponentRegistry` and, eventually, Plugins.
+
+Unmount handling marks the component record as unmounted (`status: "unmounted"`, `unmountedAt: <timestamp>`) rather than removing it from the registry, preserving its history for future consumers such as Timeline or Inspector. See `DECISIONS.md`, 2026-07-19.
+
+Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18):
+
+- Renderer identity (`rendererId`) is not tracked — single renderer (`react-dom`) assumed.
+- `onPostCommitFiberRoot` is not wired.
+- Discovery assumes a single React application per page (no container-based root correlation yet); every discovered component is attributed to the first root in `RootRegistry`.
+
+---
+
 # Package Responsibilities
 
 ## @react-insight/core
@@ -210,6 +290,8 @@ Responsibilities:
 - Internal lifecycle plugins
 - RootRegistry
 - ComponentRegistry
+- Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper)
+- Internal Component Discovery plugin
 - Future React-specific features
 
 The React package consumes the Runtime provided by `@react-insight/core`.
@@ -250,6 +332,9 @@ Current internal implementation includes:
 - Internal ComponentRegistry
 - Internal React lifecycle hooks
 - Internal Root Lifecycle Plugin
+- Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper)
+- Internal Component Discovery Plugin
+- Internal `useComponentDiscovery` hook
 - Private React Context
 
 This separation allows internal refactoring without introducing breaking API changes.
@@ -282,15 +367,30 @@ packages/react
 │   └── internal/
 │       ├── component.ts
 │       ├── componentRegistry.ts
+│       ├── componentRegistry.test.ts
 │       ├── getInternalInsight.ts
 │       ├── index.ts
 │       ├── root.ts
 │       ├── rootRegistry.ts
 │       ├── runtime.ts
+│       ├── useComponentDiscovery.ts
 │       ├── useInsightLifecycle.ts
 │       ├── useRootLifecycle.ts
 │       │
+│       ├── discovery/
+│       │   ├── discoveredComponent.ts
+│       │   ├── fiberAdapter.ts
+│       │   ├── fiberAdapter.test.ts
+│       │   ├── hookAdapter.ts
+│       │   ├── hookAdapter.test.ts
+│       │   ├── componentMapper.ts
+│       │   ├── componentMapper.test.ts
+│       │   ├── traversal.ts
+│       │   └── traversal.test.ts
+│       │
 │       └── plugins/
+│           ├── componentDiscoveryPlugin.ts
+│           ├── componentDiscoveryPlugin.test.ts
 │           ├── rootLifecyclePlugin.ts
 │           └── rootLifecyclePlugin.test.ts
 │
@@ -350,14 +450,72 @@ Future hooks may include:
 
 ## componentRegistry.ts
 
-Stores the internal representation of mounted React components.
+Stores the internal representation of mounted React components. It is the sole owner of component lifecycle state.
 
 Responsibilities:
 
-- Register components
-- Unregister components
-- Lookup components
-- Maintain framework-agnostic component state
+- Register components (`register()`, throws on duplicate id — used where a duplicate is a genuine error).
+- Synchronize discovered components without throwing on an existing id (`sync()` — decides mount vs. update by comparing against existing state).
+- Unregister components (`unregister()` — hard removal), or mark them unmounted while preserving their history (`markUnmounted()` — sets `status: "unmounted"` and `unmountedAt`, keeps the record).
+- Lookup components.
+- Maintain framework-agnostic component state (`status`, `mountedAt`, `unmountedAt`).
+
+Has no knowledge of React Fiber or how components were discovered.
+
+---
+
+## internal/discovery/
+
+Contains the Component Discovery pipeline. Each module maps to one layer of the contract defined in `REACT_RUNTIME_ARCHITECTURE.md`, Section 6.
+
+### hookAdapter.ts
+
+Safely connects to `__REACT_DEVTOOLS_GLOBAL_HOOK__`. Installs it if absent, chains any existing `onCommitFiberRoot` / `onCommitFiberUnmount` instead of overwriting them, and isolates callback errors so they never reach React's renderer.
+
+### fiberAdapter.ts
+
+Extracts the traversal entry point from a raw `FiberRoot` (`getFiberTraversalEntry`), and validates/narrows a raw unmount value into a Fiber-shaped object (`asFiberNode`). The only module allowed to know the shape of a raw Fiber/FiberRoot.
+
+### traversal.ts
+
+Walks a Fiber tree from the entry point, filtering to function/class component fibers only, and assigns stable per-Fiber ids via a `WeakMap` (`getFiberId`, exported so unmount handling can resolve the same id). Produces `DiscoveredComponent[]`.
+
+### componentMapper.ts
+
+Pure, stateless translation from `DiscoveredComponent` to `ComponentSyncInput` (structural fields only: `id`, `rootId`, `displayName`, `parentId`). Never decides lifecycle state.
+
+### discoveredComponent.ts
+
+Defines the `DiscoveredComponent` type — the internal contract between Traversal and the Mapper. Never crosses the Mapper boundary.
+
+---
+
+## internal/plugins/componentDiscoveryPlugin.ts
+
+Wires the discovery pipeline into the Runtime plugin lifecycle.
+
+Responsibilities:
+
+- Connect the Hook Adapter on `setup()`.
+- On commit: resolve the active root, run Traversal + Mapper, call `ComponentRegistry.sync()` for each discovered component.
+- On unmount: resolve the Fiber id and call `ComponentRegistry.markUnmounted()`, preserving the component record instead of removing it.
+- Disconnect the Hook Adapter on `destroy()`.
+
+Follows the same `definePlugin()` pattern as `rootLifecyclePlugin`.
+
+---
+
+## useComponentDiscovery.ts
+
+Registers the Component Discovery plugin for the lifetime of the component that calls it.
+
+Responsibilities:
+
+- Create the plugin via `createComponentDiscoveryPlugin()`.
+- Register it with the Runtime on mount.
+- Unregister it on cleanup.
+
+Contains no discovery logic itself — delegates entirely to the plugin.
 
 ---
 
@@ -367,8 +525,9 @@ Acts as the internal orchestration point for React integration.
 
 Responsibilities:
 
-- Coordinate internal lifecycle hooks
-- Keep the public API isolated from React internals
+- Coordinate internal lifecycle hooks (`useRootLifecycle`, `useComponentDiscovery`).
+- Keep the public API isolated from React internals.
+- Contains no feature-specific logic itself.
 
 ---
 
@@ -402,6 +561,7 @@ Contains internal Runtime integration plugins.
 Current plugins:
 
 - Root Lifecycle Plugin
+- Component Discovery Plugin
 
 These plugins are not part of the public API and may evolve independently from the public React interface.
 
@@ -420,8 +580,9 @@ Current contents:
 - RootRegistry
 - Internal Component model
 - ComponentRegistry
+- Component Discovery pipeline (`discovery/`)
 - React lifecycle hooks
-- Internal lifecycle plugins
+- Internal lifecycle plugins (`plugins/`)
 
 Nothing inside this directory is part of the public API.
 
@@ -452,11 +613,16 @@ Current test coverage includes:
 - `InsightProvider`
 - `useInsight()`
 - `RootRegistry`
-- `ComponentRegistry`
+- `ComponentRegistry` (including `sync()` mount/update behavior and `markUnmounted()`)
 - Root Lifecycle Plugin
+- Component Discovery Plugin (commit/sync, no-active-root no-op, unmount via `markUnmounted()`, disconnect on destroy)
 - Provider lifecycle integration
 - Mount / Unmount synchronization
 - Public API encapsulation
+- Fiber Adapter (`getFiberTraversalEntry`)
+- Traversal (filtering, parent resolution, stable ids)
+- Component Mapper (structural translation)
+- Hook Adapter (installation, chaining, error isolation, disconnect)
 
 Every public API should have automated tests before new features are introduced.
 
@@ -472,5 +638,9 @@ Every public API should have automated tests before new features are introduced.
 - React Context is private.
 - Hooks are the public access layer.
 - React lifecycle integration is isolated behind internal plugins.
+- Component Discovery integration is isolated behind an internal plugin, following the same pattern as React lifecycle.
+- No type whose name or shape depends on React Fiber crosses the Mapper boundary.
+- `ComponentRegistry` is the sole owner of component lifecycle state; upstream discovery layers (Traversal, Mapper) remain stateless.
+- Unmount preserves component history (`markUnmounted()`) rather than discarding it; `unregister()` remains available for hard removal where that is genuinely intended.
 - Public API remains minimal and stable.
 - Internal implementation may evolve without breaking consumers.

@@ -81,4 +81,32 @@ describe("ComponentRegistry", () => {
     expect(registry.get("app")?.displayName).toBe("AppRenamed");
     expect(registry.get("app")?.mountedAt).toBe(firstMountedAt);
   });
+
+  it("marks a component as unmounted without removing it", () => {
+    const registry = new ComponentRegistry();
+
+    registry.register(createComponent("app"));
+
+    expect(registry.markUnmounted("app")).toBe(true);
+
+    const component = registry.get("app");
+    expect(component?.status).toBe("unmounted");
+    expect(component?.unmountedAt).not.toBeNull();
+    expect(registry.size).toBe(1);
+  });
+
+  it("returns false when marking an untracked component as unmounted", () => {
+    const registry = new ComponentRegistry();
+
+    expect(registry.markUnmounted("missing")).toBe(false);
+  });
+
+  it("returns false when marking an already-unmounted component again", () => {
+    const registry = new ComponentRegistry();
+
+    registry.register(createComponent("app"));
+    registry.markUnmounted("app");
+
+    expect(registry.markUnmounted("app")).toBe(false);
+  });
 });

@@ -25,3 +25,21 @@ export function getFiberTraversalEntry(root: unknown): FiberNode | null {
 
   return candidate.current;
 }
+
+/**
+ * Validates and narrows a raw value received from
+ * `onCommitFiberUnmount` into a FiberNode.
+ *
+ * Unlike getFiberTraversalEntry (which unwraps a FiberRoot), this
+ * validates a value that is already fiber-shaped, coming directly
+ * from React's unmount notification.
+ */
+export function asFiberNode(value: unknown): FiberNode | null {
+  const candidate = value as Partial<FiberNode> | null | undefined;
+
+  if (!candidate || typeof candidate !== "object" || !("type" in candidate)) {
+    return null;
+  }
+
+  return candidate as FiberNode;
+}

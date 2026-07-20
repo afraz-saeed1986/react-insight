@@ -197,12 +197,18 @@ Current architecture includes:
 - React Context
 - Internal Root model
 - Internal RootRegistry
+- Internal Component model
+- Internal ComponentRegistry
 - Internal React lifecycle hook
 - Internal Root Lifecycle Plugin
+- Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper)
+- Internal Component Discovery Plugin
 
 The React package owns React-specific behavior only and delegates all Runtime responsibilities to `@react-insight/core`.
 
 React roots are synchronized with the Runtime through an internal root lifecycle plugin, while the Runtime remains the sole owner of the plugin lifecycle.
+
+Discovered React components are synchronized with the internal `ComponentRegistry` through an internal Component Discovery plugin, following the same plugin-based integration pattern as root lifecycle synchronization. See `REACT_RUNTIME_ARCHITECTURE.md` for the detailed layer contracts (Hook Adapter, Fiber Adapter, Traversal, Mapper, Registry) and their architectural boundaries.
 
 ---
 
@@ -300,10 +306,12 @@ Current coverage includes:
 - `InsightProvider`
 - `useInsight()`
 - `RootRegistry`
+- `ComponentRegistry`
 - React Lifecycle Plugin
 - Provider lifecycle integration
 - Mount / Unmount synchronization
 - Public API encapsulation
+- Component Discovery pipeline (Fiber Adapter, Traversal, Mapper, Hook Adapter)
 
 ---
 
@@ -358,8 +366,12 @@ Current internal infrastructure includes:
 - Runtime access helpers
 - Root model
 - RootRegistry
+- Component model
+- ComponentRegistry
 - React lifecycle hook
 - React Lifecycle Plugin
+- Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper)
+- Component Discovery Plugin
 
 ### playground
 

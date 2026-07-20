@@ -4,7 +4,7 @@ import type { DiscoveredComponent } from "./discoveredComponent";
 const fiberIds = new WeakMap<FiberNode, string>();
 let nextFiberId = 0;
 
-function getFiberId(fiber: FiberNode): string {
+export function getFiberId(fiber: FiberNode): string {
   let id = fiberIds.get(fiber);
 
   if (!id) {

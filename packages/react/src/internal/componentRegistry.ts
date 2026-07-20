@@ -48,6 +48,33 @@ export class ComponentRegistry {
     return this.components.delete(id);
   }
 
+  /**
+   * Marks a tracked component as unmounted without removing it from
+   * the registry.
+   *
+   * Preserves component history (status, unmountedAt) for future
+   * consumers such as Timeline / Inspector, rather than discarding
+   * the record the way unregister() does.
+   *
+   * No-op (returns false) if the component is not currently tracked,
+   * or is already unmounted.
+   */
+  markUnmounted(id: ComponentId): boolean {
+    const existing = this.components.get(id);
+
+    if (!existing || existing.status === "unmounted") {
+      return false;
+    }
+
+    this.components.set(id, {
+      ...existing,
+      status: "unmounted",
+      unmountedAt: Date.now(),
+    });
+
+    return true;
+  }
+
   has(id: ComponentId): boolean {
     return this.components.has(id);
   }

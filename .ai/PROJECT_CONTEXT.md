@@ -81,6 +81,8 @@ The project has completed **Phase 1 — Core** and is actively progressing throu
 - Internal architecture layer
 - Internal Root model
 - Internal RootRegistry
+- Internal Component model
+- Internal ComponentRegistry
 - Internal Root Lifecycle Plugin
 - React lifecycle integration
 - Root registration
@@ -88,22 +90,23 @@ The project has completed **Phase 1 — Core** and is actively progressing throu
 - Mount / Unmount synchronization
 - React package unit tests
 - React integration tests
+- Component Discovery architecture (finalized layer contracts: Hook Adapter, Fiber Adapter, Traversal, Mapper, Registry)
+- Component Discovery implementation — mount/update (Hook Adapter, Fiber Adapter, Traversal, Mapper, `ComponentRegistry.sync()`, Component Discovery Plugin)
 
 ---
 
 ### In Progress
 
-- Component tracking foundation
-- Component registry integration
-- Component discovery architecture
+- Component Discovery implementation — unmount handling (`onCommitFiberUnmount` wiring implemented, Quality Gate not yet verified/committed)
 
 ---
 
 ### Not Started
 
+- Render tracking
 - Hook tracking
 - State tracking
-- Render tracking
+- Context tracking
 - Timeline
 - DevTools panel
 - Inspector
@@ -168,14 +171,13 @@ Both Core and React packages are expected to follow the same quality standards.
 
 ## Current Focus
 
-The current focus is building the component inspection infrastructure on top of the completed React lifecycle integration.
+The current focus is completing the Component Discovery subsystem on top of the completed React lifecycle integration.
 
 Current work includes:
 
-- Component discovery architecture
-- Component discovery implementation
-- Component registry integration
-- Render tracking foundation
+- Component Discovery — unmount handling (`onCommitFiberUnmount`)
+- Verifying the full Quality Gate for the unmount changes
+- Deciding the next Component Discovery follow-up (e.g. root-container correlation for multi-application pages) or beginning Render Tracking
 
 The Playground package continues to serve as the primary integration environment.
 
@@ -210,25 +212,35 @@ Current examples include:
 - Runtime implementation hidden behind the public `Insight` abstraction.
 - Internal implementation isolated from the public API.
 - React lifecycle isolated behind an internal lifecycle plugin.
+- Component Discovery isolated behind an internal Component Discovery plugin, following the same plugin-based integration pattern as React lifecycle.
+- No type whose name or shape depends on React Fiber crosses the Mapper boundary (see `REACT_RUNTIME_ARCHITECTURE.md`).
+
+Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18):
+
+- Renderer identity (`rendererId`) is not tracked yet — single renderer (`react-dom`) assumed.
+- `onPostCommitFiberRoot` is not wired yet.
+- Component Discovery assumes a single React application per page (no container-based root correlation yet).
 
 ---
 
 ## Next Milestone
 
-The next milestone focuses on introducing the component tracking infrastructure.
+The next milestone focuses on completing the component tracking infrastructure.
 
 Immediate goals include:
 
-- Component Discovery
-- Component Registry synchronization
-- Component lifecycle tracking
+- Finish Component Discovery (unmount handling, Quality Gate verification)
+- Root-container correlation for multi-application support (if prioritized)
 - Render tracking foundation
 
 Longer-term goals include:
 
+- Hook tracking
+- State tracking
+- Context tracking
 - Timeline
 - DevTools
 - Inspector
 - Session management
 
-The completed Core package, React lifecycle integration and automated Quality Gate provide a stable platform for implementing the component inspection pipeline.
+The completed Core package, React lifecycle integration, Component Discovery pipeline (mount/update) and automated Quality Gate provide a stable platform for continuing the component inspection pipeline.

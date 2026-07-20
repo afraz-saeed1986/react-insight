@@ -488,3 +488,90 @@ Next session:
 - Implement the Component Discovery subsystem.
 - Synchronize `ComponentRegistry` with discovered React components.
 - Begin Render Tracking.
+
+---
+
+## Session 13
+
+Completed:
+
+### Architecture Finalization
+
+- Corrected the Component Discovery pipeline diagram: removed
+  "Instrumentation Layer" as a separate stage (folded into Hook Adapter
+  as an internal implementation detail); corrected Plugin communication
+  to flow through the existing Core Event Bus rather than a direct
+  Registry-to-Plugin channel.
+- Evaluated all known React runtime observation techniques
+  (`__REACT_DEVTOOLS_GLOBAL_HOOK__`, monkey patching, `Profiler` API,
+  `react-reconciler`, Babel instrumentation) and selected the DevTools
+  Global Hook with a defensive Instrumentation pattern.
+- Finalized per-layer contracts (responsibility, input, output,
+  forbidden knowledge) for Hook Adapter, Fiber Adapter, Traversal,
+  Mapper, and Component Registry in `REACT_RUNTIME_ARCHITECTURE.md`
+  Section 6.
+- Identified and deferred two premature additions after review:
+  `rendererId` on `ComponentNode` (no real consumer) and
+  `onPostCommitFiberRoot` wiring (no real consumer). Both recorded in
+  `DECISIONS.md`.
+- Identified and documented a scoping limitation: Discovery currently
+  assumes a single React application per page (page-global hook, no
+  container-based correlation with `InternalRoot` yet).
+- Identified a mismatch between the initial Section 6 draft and the
+  actual `ComponentRegistry` implementation (the draft described
+  change-event emission and `getByRoot()`, neither of which exist).
+  Corrected Section 6 to describe the registry as implemented, and
+  deferred both as documented, consumer-less extension points.
+
+### Component Discovery Implementation
+
+- Removed unused, unreferenced `RootRegistration` class
+  (`internal/rootRegistration.ts`) — zero consumers anywhere in the
+  codebase, violated the no-placeholder-API principle.
+- Implemented `internal/discovery/`: `discoveredComponent.ts`,
+  `fiberAdapter.ts`, `traversal.ts`, `componentMapper.ts`,
+  `hookAdapter.ts`, with accompanying unit tests.
+- Added `ComponentRegistry.sync()` for mount/update handling, without
+  changing the existing tested `register()` duplicate-throw behavior.
+- Added `componentDiscoveryPlugin` + `useComponentDiscovery()`, wired
+  into `useInsightLifecycle()` alongside `useRootLifecycle()`.
+- Extended `hookAdapter.ts` and `componentDiscoveryPlugin.ts` to also
+  handle `onCommitFiberUnmount`, reusing the exported `getFiberId()`
+  from `traversal.ts` to resolve the same id assigned at mount time.
+
+### Validation
+
+Mount/update pipeline: full Quality Gate (typecheck, lint, test, build)
+verified and passed; committed.
+
+Unmount handling: implemented; Quality Gate not yet run in this
+session.
+
+### Documentation
+
+Updated:
+
+- ARCHITECTURE.md
+- DECISIONS.md (renderer identity deferral, Hook Adapter event scope,
+  single-application assumption, `RootRegistration` removal,
+  `ComponentRegistry` event emission / `getByRoot` deferral)
+- PROJECT_CONTEXT.md
+- REACT_ARCHITECTURE.md (new "Component Discovery" section, updated
+  folder structure, module responsibilities, testing strategy)
+- REACT_RUNTIME_ARCHITECTURE.md (Section 6 completed and corrected
+  against the actual implementation)
+- ROADMAP.md
+
+Current status:
+
+- Component Discovery is implemented for mount/update and wired
+  end-to-end through a real consumer (`ComponentRegistry`), committed.
+- Unmount handling is implemented but not yet validated or committed.
+- All `.ai` documentation is synchronized with the implementation as
+  of this session.
+
+Next session:
+
+- Run the full Quality Gate for the unmount changes and commit.
+- Decide and implement the next Component Discovery follow-up
+  (root-container correlation, or begin Render Tracking).

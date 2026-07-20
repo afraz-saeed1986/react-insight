@@ -509,6 +509,25 @@ Follow YAGNI and avoid premature abstractions. Every new module should provide i
 
 ## 2026-07-18
 
+### Removed unused RootRegistration abstraction
+
+The `RootRegistration` class (`internal/rootRegistration.ts`) was removed.
+
+It had no consumers anywhere in the codebase and was never wired into
+the lifecycle flow. `useRootLifecycle` already unregisters plugins
+directly via `unregisterPlugin()`, without using this class.
+
+Reason:
+
+An unreferenced abstraction violates the no-placeholder-API principle
+regardless of whether it is exported publicly or kept internal. Dead
+code creates confusion for future contributors about which lifecycle
+pattern is actually in use.
+
+---
+
+## 2026-07-18
+
 ### Renderer identity is deferred
 
 `ComponentNode` and its upstream discovery models do not include a
@@ -570,3 +589,37 @@ active root per Insight instance (fixed plugin name, throws on duplicate
 registration). Adding container-based correlation now would be a feature
 with no current multi-root consumer. This assumption must be revisited
 before multi-root or multi-application support is added.
+
+---
+
+## 2026-07-19
+
+### Unmount marks components as unmounted instead of removing them
+
+`componentDiscoveryPlugin`'s `onUnmount` now calls a new
+`ComponentRegistry.markUnmounted()` instead of `unregister()`.
+
+`markUnmounted()` sets `status` to `"unmounted"` and `unmountedAt` to
+the current timestamp, but keeps the component record in the registry.
+
+`unregister()` remains unchanged (hard removal) but is no longer used
+by the discovery pipeline.
+
+Reason:
+
+`status` and `unmountedAt` already exist on `ComponentNode` and are
+already exercised by `sync()` (which sets `status: "mounted"` and
+`unmountedAt: null` on first discovery, and preserves `mountedAt`
+across updates). Continuing to hard-delete on unmount would leave
+these fields permanently without a producer, contradicting the
+no-placeholder-field principle in the other direction — the same
+principle used to defer `rendererId` and `onPostCommitFiberRoot`.
+
+Preserving unmounted components also provides the historical data
+future Timeline / Inspector consumers will need, without introducing
+any new speculative abstraction now: the consumer is the unmount
+handling being implemented in this change, not a predicted future one.
+
+This is a non-breaking change. `ComponentRegistry.unregister()` keeps
+its existing hard-delete semantics and its existing test coverage;
+it is simply no longer called from the unmount discovery path.

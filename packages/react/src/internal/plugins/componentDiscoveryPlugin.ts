@@ -2,9 +2,9 @@ import { definePlugin, type InsightPlugin } from "@react-insight/core";
 
 import type { ComponentRegistry } from "../componentRegistry";
 import type { RootRegistry } from "../rootRegistry";
-import { getFiberTraversalEntry } from "../discovery/fiberAdapter";
+import { asFiberNode, getFiberTraversalEntry } from "../discovery/fiberAdapter";
 import { mapDiscoveredComponent } from "../discovery/componentMapper";
-import { traverse } from "../discovery/traversal";
+import { getFiberId, traverse } from "../discovery/traversal";
 import { connectHookAdapter } from "../discovery/hookAdapter";
 
 export interface ComponentDiscoveryPluginOptions {
@@ -38,6 +38,14 @@ export function createComponentDiscoveryPlugin(
           for (const component of discovered) {
             options.componentRegistry.sync(mapDiscoveredComponent(component));
           }
+        },
+
+        onUnmount(fiber) {
+          const node = asFiberNode(fiber);
+
+          if (!node) return;
+
+          options.componentRegistry.markUnmounted(getFiberId(node));
         },
       });
     },

@@ -1,31 +1,31 @@
 interface ReactDevtoolsGlobalHook {
   renderers: Map<number, unknown>;
-onCommitFiberRoot?: ((
-  rendererId: number,
-  root: unknown,
-  priority?: number,
-) => void) | undefined;
+  onCommitFiberRoot?:
+    | ((rendererId: number, root: unknown, priority?: number) => void)
+    | undefined;
+  onCommitFiberUnmount?:
+    | ((rendererId: number, fiber: unknown) => void)
+    | undefined;
 }
 
 export interface HookAdapterCallbacks {
   onCommit(root: unknown): void;
+  onUnmount(fiber: unknown): void;
 }
 
 /**
  * Safely connects to `__REACT_DEVTOOLS_GLOBAL_HOOK__`.
  *
  * Installs the hook if it does not exist yet, and chains any existing
- * `onCommitFiberRoot` implementation instead of overwriting it, so this
- * never conflicts with an actual React DevTools extension or another
- * tool relying on the same hook.
+ * onCommitFiberRoot / onCommitFiberUnmount implementation instead of
+ * overwriting it, so this never conflicts with an actual React DevTools
+ * extension or another tool relying on the same hook.
  *
  * Consumer errors are isolated so they never reach React's renderer.
  *
- * Returns a disposer that restores the previous callback.
+ * Returns a disposer that restores both previous callbacks.
  *
- * Only `onCommitFiberRoot` is wired in this commit. `onCommitFiberUnmount`
- * is added in a follow-up commit (see DECISIONS.md, 2026-07-18 — Hook
- * Adapter event contract). `onPostCommitFiberRoot` remains deferred.
+ * onPostCommitFiberRoot remains deferred (see DECISIONS.md, 2026-07-18).
  */
 export function connectHookAdapter(
   callbacks: HookAdapterCallbacks,
@@ -43,6 +43,7 @@ export function connectHookAdapter(
 
   const hook = globalTarget.__REACT_DEVTOOLS_GLOBAL_HOOK__;
   const previousOnCommitFiberRoot = hook.onCommitFiberRoot;
+  const previousOnCommitFiberUnmount = hook.onCommitFiberUnmount;
 
   hook.onCommitFiberRoot = (rendererId, root, priority) => {
     previousOnCommitFiberRoot?.(rendererId, root, priority);
@@ -54,7 +55,18 @@ export function connectHookAdapter(
     }
   };
 
+  hook.onCommitFiberUnmount = (rendererId, fiber) => {
+    previousOnCommitFiberUnmount?.(rendererId, fiber);
+
+    try {
+      callbacks.onUnmount(fiber);
+    } catch (error) {
+      console.error("[react-insight] Component discovery failed:", error);
+    }
+  };
+
   return () => {
     hook.onCommitFiberRoot = previousOnCommitFiberRoot;
+    hook.onCommitFiberUnmount = previousOnCommitFiberUnmount;
   };
 }
