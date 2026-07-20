@@ -13,6 +13,8 @@ function createComponent(id: string): ComponentNode {
     status: "mounted",
     mountedAt: Date.now(),
     unmountedAt: null,
+    renderCount: 1,
+    lastRenderedAt: Date.now(),
   };
 }
 
@@ -62,21 +64,21 @@ describe("ComponentRegistry", () => {
   it("registers a new component on first sync", () => {
     const registry = new ComponentRegistry();
 
-    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null });
-
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true });
+    
     const component = registry.get("app");
 
     expect(component?.status).toBe("mounted");
     expect(component?.unmountedAt).toBeNull();
   });
 
-  it("updates structural fields without resetting mountedAt on repeated sync", () => {
+it("updates structural fields without resetting mountedAt on repeated sync", () => {
     const registry = new ComponentRegistry();
 
-    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null });
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true });
     const firstMountedAt = registry.get("app")?.mountedAt;
 
-    registry.sync({ id: "app", rootId: "root-1", displayName: "AppRenamed", parentId: null });
+    registry.sync({ id: "app", rootId: "root-1", displayName: "AppRenamed", parentId: null, rendered: true });
 
     expect(registry.get("app")?.displayName).toBe("AppRenamed");
     expect(registry.get("app")?.mountedAt).toBe(firstMountedAt);
@@ -109,4 +111,24 @@ describe("ComponentRegistry", () => {
 
     expect(registry.markUnmounted("app")).toBe(false);
   });
+
+  it("counts the mount itself as the first render", () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true });
+
+    expect(registry.get("app")?.renderCount).toBe(1);
+    expect(registry.get("app")?.lastRenderedAt).not.toBeNull();
+  });
+
+  it("increments renderCount only when rendered is true", () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true });
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: false });
+    expect(registry.get("app")?.renderCount).toBe(1);
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true });
+    expect(registry.get("app")?.renderCount).toBe(2);
+  });
+
 });

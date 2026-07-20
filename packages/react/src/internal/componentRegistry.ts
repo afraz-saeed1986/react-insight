@@ -2,7 +2,14 @@ import type { ComponentId, ComponentNode } from "./component";
 export type ComponentSyncInput = Pick<
   ComponentNode,
   "id" | "rootId" | "displayName" | "parentId"
->;
+> & {
+  /**
+   * Whether this sync corresponds to React actually rendering the
+   * component in this commit (vs. merely being present in the tree).
+   * Only affects renderCount / lastRenderedAt, never structural fields.
+   */
+  readonly rendered: boolean;
+};
 
 export class ComponentRegistry {
   private readonly components = new Map<ComponentId, ComponentNode>();
@@ -22,25 +29,30 @@ export class ComponentRegistry {
    * mount vs. update by checking existing state, since ComponentRegistry
    * is the sole owner of lifecycle state (Principle 8, Domain Ownership).
    */
-  sync(input: ComponentSyncInput): void {
+sync(input: ComponentSyncInput): void {
+    const { rendered, ...structural } = input;
     const existing = this.components.get(input.id);
 
     if (existing) {
       this.components.set(input.id, {
         ...existing,
-        rootId: input.rootId,
-        displayName: input.displayName,
-        parentId: input.parentId,
+        rootId: structural.rootId,
+        displayName: structural.displayName,
+        parentId: structural.parentId,
+        renderCount: rendered ? existing.renderCount + 1 : existing.renderCount,
+        lastRenderedAt: rendered ? Date.now() : existing.lastRenderedAt,
       });
       return;
     }
 
     this.components.set(input.id, {
-      ...input,
+      ...structural,
       children: new Set(),
       status: "mounted",
       mountedAt: Date.now(),
       unmountedAt: null,
+      renderCount: 1,
+      lastRenderedAt: Date.now(),
     });
   }
 

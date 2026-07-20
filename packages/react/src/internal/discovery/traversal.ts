@@ -4,30 +4,51 @@ import type { DiscoveredComponent } from "./discoveredComponent";
 const fiberIds = new WeakMap<FiberNode, string>();
 let nextFiberId = 0;
 
+interface FiberIdentity {
+  id: string;
+  rendered: boolean;
+}
+
 /**
- * Resolves a stable id for a Fiber, reusing the id already assigned to
- * its `alternate` if one exists.
+ * Resolves a stable id for a Fiber, and whether React actually rendered
+ * it in this commit.
  *
  * React reuses exactly two Fiber objects per component instance
- * (`current` <-> `alternate`, "double buffering"), toggling which one
- * is `root.current` on every commit. Without this alternate lookup, a
- * component that re-renders even once would get a brand-new id on its
- * second render (since its Fiber object flips to the previously-unseen
- * alternate), causing ComponentRegistry.sync() to treat it as a new
- * mount and leaving the old entry as an orphaned "ghost" that never
- * unmounts.
+ * (`current` <-> `alternate`), toggling which one is `root.current` on
+ * every commit:
+ *
+ * - If this exact object was already seen: React bailed out and reused
+ *   `current` unchanged — not rendered this commit.
+ * - If this object is new but its `alternate` was already seen: the
+ *   pair swapped, meaning React actually processed this fiber — rendered.
+ * - If neither was seen: first mount — rendered.
  */
-export function getFiberId(fiber: FiberNode): string {
-  const existing = fiberIds.get(fiber) ?? (fiber.alternate ? fiberIds.get(fiber.alternate) : undefined);
+function resolveFiberIdentity(fiber: FiberNode): FiberIdentity {
+  const directHit = fiberIds.get(fiber);
 
-  if (existing) {
-    fiberIds.set(fiber, existing);
-    return existing;
+  if (directHit) {
+    return { id: directHit, rendered: false };
+  }
+
+  const alternateHit = fiber.alternate ? fiberIds.get(fiber.alternate) : undefined;
+
+  if (alternateHit) {
+    fiberIds.set(fiber, alternateHit);
+    return { id: alternateHit, rendered: true };
   }
 
   const id = `fiber-${++nextFiberId}`;
   fiberIds.set(fiber, id);
-  return id;
+  return { id, rendered: true };
+}
+
+/**
+ * Resolves a stable id for a Fiber, reusing the id already assigned to
+ * its `alternate` if one exists. See resolveFiberIdentity() for why
+ * this is necessary.
+ */
+export function getFiberId(fiber: FiberNode): string {
+  return resolveFiberIdentity(fiber).id;
 }
 
 function isComponentFiber(fiber: FiberNode): boolean {
@@ -61,14 +82,18 @@ export function traverse(
     if (!fiber) return;
 
     const isComponent = isComponentFiber(fiber);
-    const nextParentId = isComponent ? getFiberId(fiber) : parentId;
+    let nextParentId = parentId;
 
     if (isComponent) {
+      const { id, rendered } = resolveFiberIdentity(fiber);
+      nextParentId = id;
+
       result.push({
-        id: getFiberId(fiber),
+        id,
         rootId,
         displayName: getDisplayName(fiber),
         parentId,
+        rendered,
       });
     }
 

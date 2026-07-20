@@ -13,4 +13,11 @@ export interface DiscoveredComponent {
   readonly rootId: string;
   readonly displayName: string;
   readonly parentId: DiscoveredComponentId | null;
+
+  /**
+   * Whether React actually rendered this fiber in the current commit,
+   * as opposed to it merely being present in the tree (e.g. a bailed-
+   * out subtree). See traversal.ts, resolveFiberIdentity().
+   */
+  readonly rendered: boolean;
 }

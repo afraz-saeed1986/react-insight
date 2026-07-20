@@ -623,3 +623,102 @@ handling being implemented in this change, not a predicted future one.
 This is a non-breaking change. `ComponentRegistry.unregister()` keeps
 its existing hard-delete semantics and its existing test coverage;
 it is simply no longer called from the unmount discovery path.
+
+---
+
+## 2026-07-20
+
+### Render Tracking begins with root-level commit counting
+
+`InternalRoot` gains `commitCount` and `lastCommittedAt`. `RootRegistry`
+gains `recordCommit(id)`, called once per `onCommitFiberRoot` for the
+active root, before traversal runs.
+
+Reason:
+
+This is the first slice of Render Tracking (see ROADMAP.md). Every
+`onCommitFiberRoot` call for a registered root corresponds to exactly
+one real commit, so counting at the root level is unambiguous and
+100% accurate.
+
+A per-component render count was considered and rejected for this
+slice: `traverse()` walks the _entire_ current fiber tree on every
+commit and calls `ComponentRegistry.sync()` for every discovered
+component, regardless of whether that specific component actually
+re-rendered in this commit. Incrementing a count in `sync()` would
+conflate "present in the tree during this commit" with "actually
+rendered", producing inflated, misleading numbers for any component
+that didn't change. See the next entry for why this is deferred
+rather than solved now.
+
+---
+
+## 2026-07-20
+
+### Per-component render detection is deferred pending a fiber diffing design
+
+Detecting whether a specific Fiber actually rendered (rather than
+merely being present in the tree) requires comparing a Fiber against
+its `alternate` — the same general technique used by React DevTools
+and community tools built on `__REACT_DEVTOOLS_GLOBAL_HOOK__` (e.g.
+`react-debug-updates`) to implement "why did this render" features.
+
+This is intentionally not implemented yet. It requires:
+
+- Extending `FiberNode` (`fiberAdapter.ts`) with an `alternate`
+  reference, since fiberAdapter.ts is the only module allowed to know
+  raw Fiber shape.
+- A dedicated design pass evaluating the diffing signal to use
+  (`alternate` comparison vs. profiler timing fields such as
+  `actualDuration`, which are development-build-only).
+- A real consumer for the result before any field is added to
+  `ComponentNode` (Principle: no field without a real consumer — the
+  same principle applied to `rendererId` and `onPostCommitFiberRoot`).
+
+Reason:
+
+Follow the same design-first process used for Component Discovery
+(see 2026-07-15 and Session 13) rather than shipping a heuristic that
+could silently produce incorrect render counts. Root-level commit
+counting (previous entry) ships now because it is unambiguous; per-
+component detection ships once its technique is deliberately chosen
+and documented.
+
+---
+
+## 2026-07-20
+
+### Fixed: getFiberId() did not survive React's current/alternate toggling
+
+`getFiberId()` assigned ids using a `WeakMap<FiberNode, string>` keyed
+purely on Fiber object identity. React reuses exactly two Fiber objects
+per component instance (`current` and `alternate`), toggling which one
+is `root.current` on every commit. A component's _first_ update swaps
+`root.current` to the previously-unseen `alternate` object, which had
+no entry in the WeakMap — so it received a brand-new id.
+
+Impact: `ComponentRegistry.sync()` treated any component's first
+re-render as a new mount. The original entry, never having actually
+unmounted, was never cleaned up, leaving an orphaned "ghost" record.
+Every component that ever re-rendered more than once would accumulate
+duplicate entries indefinitely.
+
+This was not caught earlier because the only existing "stable id"
+test re-traversed the _same_ Fiber object twice, never simulating the
+current/alternate swap.
+
+Fix:
+
+- `FiberNode` (`fiberAdapter.ts`) gained an `alternate: FiberNode | null`
+  field.
+- `getFiberId()` now also checks `fiber.alternate` for an existing id
+  before minting a new one, and back-fills the id for `fiber` itself so
+  subsequent lookups are direct.
+
+Reason:
+
+Correctness of Component Discovery's mount/update tracking depends on
+component identity surviving across renders. This also happens to be
+required groundwork for any future per-component render detection
+(2026-07-20, previous entries), which will need to compare a Fiber
+against its `alternate` regardless.

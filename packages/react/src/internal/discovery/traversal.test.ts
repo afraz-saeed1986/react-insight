@@ -88,4 +88,26 @@ describe("traverse", () => {
 
     expect(updateId).toBe(mountId);
   });
+
+  it("marks a bailed-out fiber (same object reused as current) as not rendered", () => {
+    const appFiber = fiber(App);
+
+    const firstResult = traverse(appFiber, "root-1");
+    // React reused the exact same object as root.current again — no
+    // new alternate — meaning it bailed out and didn't re-render it.
+    const secondResult = traverse(appFiber, "root-1");
+
+    expect(firstResult[0]!.rendered).toBe(true); // mount
+    expect(secondResult[0]!.rendered).toBe(false); // bailout
+  });
+
+  it("marks an updated fiber (swapped to a new alternate) as rendered", () => {
+    const mountFiber = fiber(App);
+    traverse(mountFiber, "root-1");
+
+    const updateFiber = fiber(App, null, null, mountFiber);
+    const result = traverse(updateFiber, "root-1");
+
+    expect(result[0]!.rendered).toBe(true);
+  });
 });

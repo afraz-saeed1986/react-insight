@@ -17,5 +17,6 @@ export function mapDiscoveredComponent(
     rootId: discovered.rootId,
     displayName: discovered.displayName,
     parentId: discovered.parentId,
+    rendered: discovered.rendered,
   };
 }

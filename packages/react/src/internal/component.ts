@@ -43,4 +43,16 @@ export interface ComponentNode {
    * Timestamp when the component was unmounted.
    */
   unmountedAt: number | null;
+
+  /**
+   * Number of times this component has actually rendered (mount counts
+   * as the first render). Distinct from mere presence in a commit's
+   * traversed tree — see traversal.ts, resolveFiberIdentity().
+   */
+  renderCount: number;
+
+  /**
+   * Timestamp of the most recent render.
+   */
+  lastRenderedAt: number | null;
 }
