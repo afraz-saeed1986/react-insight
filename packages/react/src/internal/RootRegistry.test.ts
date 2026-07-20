@@ -72,4 +72,36 @@ describe("RootRegistry", () => {
 
     expect(() => registry.register(root)).toThrow("is already registered");
   });
+
+  it("records a commit, incrementing commitCount and setting lastCommittedAt", () => {
+    const registry = new RootRegistry();
+    const root = createInternalRoot();
+    registry.register(root);
+
+    expect(registry.recordCommit(root.id)).toBe(true);
+
+    const updated = registry.get(root.id);
+    expect(updated?.commitCount).toBe(1);
+    expect(updated?.lastCommittedAt).not.toBeNull();
+  });
+
+  it("accumulates commitCount across multiple commits", () => {
+    const registry = new RootRegistry();
+    const root = createInternalRoot();
+    registry.register(root);
+
+    registry.recordCommit(root.id);
+    registry.recordCommit(root.id);
+    registry.recordCommit(root.id);
+
+    expect(registry.get(root.id)?.commitCount).toBe(3);
+  });
+
+  it("returns false when recording a commit for an unregistered root", () => {
+    const registry = new RootRegistry();
+    const root = createInternalRoot();
+
+    expect(registry.recordCommit(root.id)).toBe(false);
+  });
+  
 });

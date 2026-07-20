@@ -29,6 +29,8 @@ export function createComponentDiscoveryPlugin(
 
           if (!activeRoot) return;
 
+          options.rootRegistry.recordCommit(activeRoot.id);
+
           const entry = getFiberTraversalEntry(root);
 
           if (!entry) return;

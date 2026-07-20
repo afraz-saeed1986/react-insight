@@ -2,6 +2,7 @@ export interface FiberNode {
   type: unknown;
   child: FiberNode | null;
   sibling: FiberNode | null;
+  alternate: FiberNode | null;
 }
 
 interface FiberRootContainer {

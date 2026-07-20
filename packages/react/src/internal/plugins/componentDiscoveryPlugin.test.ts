@@ -84,10 +84,11 @@ describe("createComponentDiscoveryPlugin", () => {
     getGlobalWithHook().__REACT_DEVTOOLS_GLOBAL_HOOK__ = originalHook;
   });
 
-  it("syncs discovered components into the registry on commit", async () => {
+it("syncs discovered components into the registry on commit", async () => {
     const rootRegistry = new RootRegistry();
     const componentRegistry = new ComponentRegistry();
-    rootRegistry.register(createInternalRoot());
+    const root = createInternalRoot();
+    rootRegistry.register(root);
 
     const plugin = createComponentDiscoveryPlugin({ rootRegistry, componentRegistry });
     await plugin.setup({ emit() {}, on: () => () => {} });
@@ -101,6 +102,8 @@ describe("createComponentDiscoveryPlugin", () => {
     const component = getOnlyComponent(componentRegistry);
     expect(component.displayName).toBe("App");
     expect(component.status).toBe("mounted");
+
+    expect(rootRegistry.get(root.id)?.commitCount).toBe(1);
   });
 
   it("does nothing on commit when no root is registered", async () => {

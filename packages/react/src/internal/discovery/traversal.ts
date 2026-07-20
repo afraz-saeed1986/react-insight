@@ -4,14 +4,29 @@ import type { DiscoveredComponent } from "./discoveredComponent";
 const fiberIds = new WeakMap<FiberNode, string>();
 let nextFiberId = 0;
 
+/**
+ * Resolves a stable id for a Fiber, reusing the id already assigned to
+ * its `alternate` if one exists.
+ *
+ * React reuses exactly two Fiber objects per component instance
+ * (`current` <-> `alternate`, "double buffering"), toggling which one
+ * is `root.current` on every commit. Without this alternate lookup, a
+ * component that re-renders even once would get a brand-new id on its
+ * second render (since its Fiber object flips to the previously-unseen
+ * alternate), causing ComponentRegistry.sync() to treat it as a new
+ * mount and leaving the old entry as an orphaned "ghost" that never
+ * unmounts.
+ */
 export function getFiberId(fiber: FiberNode): string {
-  let id = fiberIds.get(fiber);
+  const existing = fiberIds.get(fiber) ?? (fiber.alternate ? fiberIds.get(fiber.alternate) : undefined);
 
-  if (!id) {
-    id = `fiber-${++nextFiberId}`;
-    fiberIds.set(fiber, id);
+  if (existing) {
+    fiberIds.set(fiber, existing);
+    return existing;
   }
 
+  const id = `fiber-${++nextFiberId}`;
+  fiberIds.set(fiber, id);
   return id;
 }
 

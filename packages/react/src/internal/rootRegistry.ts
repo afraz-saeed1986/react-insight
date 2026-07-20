@@ -21,6 +21,28 @@ export class RootRegistry {
     this.roots.delete(id);
   }
 
+  /**
+   * Records a commit for a registered root, incrementing commitCount
+   * and updating lastCommittedAt.
+   *
+   * Returns false (no-op) if the root is not currently registered.
+   */
+  recordCommit(id: symbol): boolean {
+    const existing = this.roots.get(id);
+
+    if (!existing) {
+      return false;
+    }
+
+    this.roots.set(id, {
+      ...existing,
+      commitCount: existing.commitCount + 1,
+      lastCommittedAt: Date.now(),
+    });
+
+    return true;
+  }
+
   get(id: symbol): InternalRoot | undefined {
     return this.roots.get(id);
   }
