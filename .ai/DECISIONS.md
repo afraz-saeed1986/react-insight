@@ -722,3 +722,37 @@ component identity surviving across renders. This also happens to be
 required groundwork for any future per-component render detection
 (2026-07-20, previous entries), which will need to compare a Fiber
 against its `alternate` regardless.
+
+---
+
+## 2026-07-20
+
+### Per-component render detection implemented via current/alternate resolution
+
+The per-component render detection deferred earlier today is now
+implemented, reusing the fiber identity fix from the previous entry
+rather than introducing a new mechanism:
+
+- Direct WeakMap hit on the Fiber object itself → React bailed out and
+  reused `current` unchanged → not rendered this commit.
+- Hit on `fiber.alternate` instead → the current/work-in-progress pair
+  swapped → React actually processed this fiber → rendered.
+- Neither → first mount → rendered.
+
+`DiscoveredComponent` gained a `rendered: boolean` field, threaded
+through `ComponentSyncInput` into `ComponentRegistry.sync()`.
+`ComponentNode` gained `renderCount` and `lastRenderedAt`, updated only
+when `rendered` is true; structural fields (`rootId`, `displayName`,
+`parentId`) continue to update unconditionally, matching existing
+`sync()` semantics.
+
+Reason:
+
+No `<Profiler>` wrapping (which would require touching consumer code,
+contradicting the project's zero-instrumentation positioning) and no
+dependency on development-build-only profiler timing fields
+(`actualDuration`) were needed — the signal was already implied by the
+fiber identity fix. This mirrors the general technique used by React
+DevTools and community tools built on
+`__REACT_DEVTOOLS_GLOBAL_HOOK__` (e.g. `react-debug-updates`) to detect
+re-renders without wrapping user code.

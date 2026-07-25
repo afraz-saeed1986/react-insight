@@ -575,3 +575,172 @@ Next session:
 - Run the full Quality Gate for the unmount changes and commit.
 - Decide and implement the next Component Discovery follow-up
   (root-container correlation, or begin Render Tracking).
+
+---
+
+## Session 14
+
+Completed:
+
+### Component Discovery — Unmount Finalized
+
+- Fixed a doc/code drift found before this session's Quality Gate run:
+  `DECISIONS.md` claimed `RootRegistration` (`internal/rootRegistration.ts`)
+  had been removed; the file still existed with zero consumers. Removed it.
+- Removed two empty, unreferenced stub files/folders
+  (`packages/core/src/inspector/`, `packages/core/src/session/`),
+  present since before this session, unexported and mentioned nowhere in
+  documentation — a violation of the no-placeholder-API principle.
+- Reviewed the unmount design: hard-deleting via `unregister()` would
+  leave `ComponentNode.status` / `unmountedAt` permanently without a
+  producer, contradicting the same no-placeholder-field principle
+  already applied to `rendererId`. Decided to preserve component
+  history instead.
+- Added `ComponentRegistry.markUnmounted()` (non-breaking; `unregister()`
+  keeps its existing hard-delete semantics and test coverage).
+- Wired `componentDiscoveryPlugin`'s `onUnmount` to `markUnmounted()`.
+- Added `componentDiscoveryPlugin.test.ts` (previously the only
+  discovery-pipeline module with zero dedicated tests): commit/sync,
+  no-active-root no-op, unmount via `markUnmounted()`, disconnect on
+  destroy.
+- Fixed strict-mode issues in the new test file: `noUncheckedIndexedAccess`
+  "possibly undefined" on array destructuring (resolved via an explicit
+  guard helper, not a non-null assertion), and removed all `any` usage
+  (typed global hook access the same way `hookAdapter.test.ts` already
+  does; used the real `createInternalRoot()` factory instead of a hand-
+  built fake root).
+
+### Validation
+
+Full Quality Gate (lint, typecheck, build, test) verified and passed.
+Committed.
+
+### Render Tracking — Foundation Started
+
+- Evaluated the correctness of a naive per-component render counter:
+  rejected, because `traverse()` walks the entire current fiber tree on
+  every commit and calls `ComponentRegistry.sync()` for every discovered
+  component regardless of whether that specific component actually
+  re-rendered — a naive counter would conflate "present in the tree"
+  with "rendered".
+- Decided the correct first slice is root-level commit counting instead,
+  which is unambiguous: every `onCommitFiberRoot` call for a registered
+  root is exactly one real commit.
+- Added `commitCount` / `lastCommittedAt` to `InternalRoot` and
+  `RootRegistry.recordCommit()` (same non-mutating replace-on-write
+  pattern as `ComponentRegistry.markUnmounted()`).
+- Wired `componentDiscoveryPlugin`'s `onCommit` to call `recordCommit()`
+  for the active root before traversal runs.
+- Documented per-component render detection (Fiber `alternate` diffing,
+  the same general technique used by React DevTools and community tools
+  built on `__REACT_DEVTOOLS_GLOBAL_HOOK__`) as a deferred, dedicated
+  design decision rather than implementing a heuristic now.
+
+### Documentation
+
+Updated:
+
+- DECISIONS.md (`RootRegistration` actually removed, `markUnmounted()`
+  decision, root-level commit counting decision, per-component render
+  detection deferral)
+- REACT_ARCHITECTURE.md (unmount flow, `markUnmounted()` responsibility,
+  Component Discovery Plugin test coverage, folder structure)
+- PROJECT_CONTEXT.md
+- ROADMAP.md
+
+Current status:
+
+- Component Discovery is fully implemented (mount, update, unmount),
+  tested, and committed.
+- Render Tracking has started: root-level commit counting is implemented
+  and tested; per-component render detection is designed-but-deferred,
+  pending a dedicated `alternate`-diffing implementation pass.
+- All `.ai` documentation is synchronized with the implementation as of
+  this session.
+
+Next session:
+
+- Extend `FiberNode` (`fiberAdapter.ts`) with an `alternate` reference.
+- Implement per-component render detection via `alternate` comparison.
+- Add render count / last-rendered timestamp to `ComponentNode` once the
+  detection technique is implemented and tested.
+- Decide whether root-container correlation should be prioritized now
+  that Component Tracking and root-level Render Tracking are stable.
+
+---
+
+## Session 15
+
+Completed:
+
+### Fiber Identity Fix
+
+- Discovered that `getFiberId()` was keyed purely on Fiber object
+  identity via a `WeakMap`, which does not survive React's
+  `current`/`alternate` double buffering: a component's first
+  re-render swaps `root.current` to a previously-unseen object,
+  causing `ComponentRegistry.sync()` to treat it as a brand-new mount
+  and leaving the original entry as a permanent orphaned "ghost"
+  record. Affected every component that ever re-rendered, since
+  Session 13.
+- Root cause was not caught earlier because the existing "stable id"
+  test re-traversed the same Fiber object twice, never simulating the
+  current/alternate swap.
+- Fixed: `FiberNode` gained an `alternate: FiberNode | null` field;
+  `getFiberId()` now checks the alternate for an existing id before
+  minting a new one.
+- Added tests simulating the swap directly (`traversal.test.ts`).
+- Committed as an isolated fix, separate from the render tracking
+  feature commit.
+
+### Per-Component Render Detection
+
+- Implemented per-component render detection by reusing the fiber
+  identity resolution from the fix above: a direct WeakMap hit means
+  React bailed out (not rendered), a hit via `alternate` means the
+  pair swapped (rendered), and no hit at all means first mount
+  (rendered).
+- Deliberately avoided `<Profiler>` wrapping and profiler-timing
+  fields (`actualDuration`) — the signal was already available from
+  the identity fix, with no need for user code changes or a
+  development-build-only mechanism.
+- Added `DiscoveredComponent.rendered`, threaded through
+  `ComponentSyncInput` into `ComponentRegistry.sync()`.
+- Added `ComponentNode.renderCount` / `lastRenderedAt`, updated only
+  when `rendered` is true; structural fields continue updating
+  unconditionally, matching existing `sync()` semantics.
+- Updated existing fixtures/tests across `componentRegistry.test.ts`
+  and `componentMapper.test.ts` that predated the `rendered` field.
+
+### Validation
+
+Full Quality Gate (lint, typecheck, build, test) verified and passed
+across all changes in this session, including after each fixture
+update.
+
+### Documentation
+
+Updated:
+
+- DECISIONS.md (fiber identity fix, per-component render detection
+  implementation)
+- PROJECT_CONTEXT.md (Render Tracking marked complete; Current Focus
+  and Next Milestone reset to open candidates)
+- ROADMAP.md (Render Tracking section fully checked off)
+
+Current status:
+
+- Component Discovery (mount, update, unmount) and Render Tracking
+  (root-level commit counting, per-component render detection and
+  count) are both fully implemented, tested, and committed.
+- A latent correctness bug affecting Component Discovery since
+  Session 13 has been found and fixed.
+- All `.ai` documentation is synchronized with the implementation as
+  of this session.
+
+Next session:
+
+- Choose the next area of work from the candidates listed in
+  PROJECT_CONTEXT.md's Current Focus (root-container correlation,
+  ComponentRegistry change-event emission / getByRoot(), Hook/State/
+  Context tracking, or Phase 3 Inspector groundwork).

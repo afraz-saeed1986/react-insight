@@ -92,18 +92,22 @@ The project has completed **Phase 1 — Core** and is actively progressing throu
 - React integration tests
 - Component Discovery architecture (finalized layer contracts: Hook Adapter, Fiber Adapter, Traversal, Mapper, Registry)
 - Component Discovery implementation — mount/update (Hook Adapter, Fiber Adapter, Traversal, Mapper, `ComponentRegistry.sync()`, Component Discovery Plugin)
+- Component Discovery implementation — unmount (`ComponentRegistry.markUnmounted()`, preserving component history instead of removing the record)
+- Component Discovery Plugin test coverage (`componentDiscoveryPlugin.test.ts`)
+- Render Tracking — root-level commit counting (`InternalRoot.commitCount` / `lastCommittedAt`, `RootRegistry.recordCommit()`)
+- Render Tracking — fiber identity fix (`getFiberId()` resolves across React's `current`/`alternate` swap, fixing a pre-existing ghost-entry bug in Component Discovery)
+- Render Tracking — per-component render detection and count (`DiscoveredComponent.rendered`, `ComponentNode.renderCount` / `lastRenderedAt`)
 
 ---
 
 ### In Progress
 
-- Component Discovery implementation — unmount handling (`onCommitFiberUnmount` wiring implemented, Quality Gate not yet verified/committed)
+None currently. See **Current Focus** below for the next planned work.
 
 ---
 
 ### Not Started
 
-- Render tracking
 - Hook tracking
 - State tracking
 - Context tracking
@@ -171,13 +175,14 @@ Both Core and React packages are expected to follow the same quality standards.
 
 ## Current Focus
 
-The current focus is completing the Component Discovery subsystem on top of the completed React lifecycle integration.
+Render Tracking (root-level commit counting and per-component render detection/count) is now complete. The current focus is deciding the next area of work.
 
-Current work includes:
+Candidates, in no particular order:
 
-- Component Discovery — unmount handling (`onCommitFiberUnmount`)
-- Verifying the full Quality Gate for the unmount changes
-- Deciding the next Component Discovery follow-up (e.g. root-container correlation for multi-application pages) or beginning Render Tracking
+- Root-container correlation for multi-application pages, still deferred and unprioritized (see `DECISIONS.md`, 2026-07-18)
+- `ComponentRegistry` change-event emission and `getByRoot()` query — still without a real consumer, so still deferred per the no-placeholder principle until something (e.g. an Inspector or DevTools panel prototype) actually needs them
+- Beginning Hook / State / Context tracking
+- Beginning the Phase 3 Inspector groundwork now that Component + Render Tracking are stable
 
 The Playground package continues to serve as the primary integration environment.
 
@@ -214,6 +219,9 @@ Current examples include:
 - React lifecycle isolated behind an internal lifecycle plugin.
 - Component Discovery isolated behind an internal Component Discovery plugin, following the same plugin-based integration pattern as React lifecycle.
 - No type whose name or shape depends on React Fiber crosses the Mapper boundary (see `REACT_RUNTIME_ARCHITECTURE.md`).
+- Component unmount preserves history (`ComponentRegistry.markUnmounted()`) instead of deleting the record, since `status`/`unmountedAt` already exist on `ComponentNode` and needed a real producer (see `DECISIONS.md`, 2026-07-19).
+- Component identity survives React's `current`/`alternate` fiber-pair swap: `getFiberId()` resolves via the alternate before minting a new id, fixing a ghost-entry bug that affected every component that ever re-rendered (see `DECISIONS.md`, 2026-07-20).
+- Per-component render detection reuses that same identity resolution (direct hit = bailout, alternate hit = rendered, neither = mount) rather than `<Profiler>` or profiler-timing fields, keeping the library's zero-instrumentation, no-wrapper positioning (see `DECISIONS.md`, 2026-07-20).
 
 Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18):
 
@@ -225,15 +233,9 @@ Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18):
 
 ## Next Milestone
 
-The next milestone focuses on completing the component tracking infrastructure.
+Component Tracking and Render Tracking foundations are both complete. The next milestone has not been chosen yet — see **Current Focus** above for the candidates under consideration.
 
-Immediate goals include:
-
-- Finish Component Discovery (unmount handling, Quality Gate verification)
-- Root-container correlation for multi-application support (if prioritized)
-- Render tracking foundation
-
-Longer-term goals include:
+Longer-term goals remain:
 
 - Hook tracking
 - State tracking
@@ -243,4 +245,4 @@ Longer-term goals include:
 - Inspector
 - Session management
 
-The completed Core package, React lifecycle integration, Component Discovery pipeline (mount/update) and automated Quality Gate provide a stable platform for continuing the component inspection pipeline.
+The completed Core package, React lifecycle integration, full Component Discovery pipeline (mount/update/unmount), and full Render Tracking (root-level commit counting plus per-component render detection/count) provide a stable platform for the next phase of work.

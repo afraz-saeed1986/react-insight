@@ -93,17 +93,22 @@
 - [x] Component Discovery architecture (Section 6 finalized in `REACT_RUNTIME_ARCHITECTURE.md`)
 - [x] ComponentRegistry synchronization (`ComponentRegistry.sync()`)
 - [x] Component Discovery implementation — mount/update (Hook Adapter, Fiber Adapter, Traversal, Mapper, wired via `componentDiscoveryPlugin`)
+- [x] Component Discovery implementation — unmount (`ComponentRegistry.markUnmounted()`, Quality Gate verified and committed)
 
-### In Progress
+## Render Tracking
 
-- [ ] Component Discovery implementation — unmount (`onCommitFiberUnmount` wiring written; Quality Gate not yet verified/committed)
+### Completed
+
+- [x] Root-level commit counting (`InternalRoot.commitCount` / `lastCommittedAt`, `RootRegistry.recordCommit()`)
+- [x] Fiber identity fix: `getFiberId()` resolves across React's `current`/`alternate` swap (see `DECISIONS.md`, 2026-07-20)
+- [x] Per-component render detection (`DiscoveredComponent.rendered`, via current/alternate resolution)
+- [x] Per-component render count / last-rendered timestamp on `ComponentNode` (`renderCount`, `lastRenderedAt`)
 
 ### Planned
 
 - [ ] Root-container correlation (multi-application page support)
 - [ ] ComponentRegistry change-event emission
 - [ ] ComponentRegistry `getByRoot()` query
-- [ ] Render tracking
 - [ ] State tracking
 - [ ] Hook tracking
 - [ ] Context tracking

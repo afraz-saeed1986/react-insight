@@ -106,18 +106,7 @@ it("syncs discovered components into the registry on commit", async () => {
     expect(rootRegistry.get(root.id)?.commitCount).toBe(1);
   });
 
-  it("does nothing on commit when no root is registered", async () => {
-    const rootRegistry = new RootRegistry();
-    const componentRegistry = new ComponentRegistry();
 
-    const plugin = createComponentDiscoveryPlugin({ rootRegistry, componentRegistry });
-    await plugin.setup({ emit() {}, on: () => () => {} });
-
-    const fiberRoot = { current: createFiber("App") };
-    getInstalledHook().onCommitFiberRoot?.(1, fiberRoot);
-
-    expect(componentRegistry.size).toBe(0);
-  });
 
   it("marks a component as unmounted (without removing it) on onCommitFiberUnmount", async () => {
     const rootRegistry = new RootRegistry();
@@ -153,4 +142,44 @@ it("syncs discovered components into the registry on commit", async () => {
 
     expect(getInstalledHook().onCommitFiberRoot).toBeUndefined();
   });
+
+  it("still discovers components on a commit that happens before any root is registered", async () => {
+    const rootRegistry = new RootRegistry();
+    const componentRegistry = new ComponentRegistry();
+    // No rootRegistry.register() call here — simulates the real
+    // ordering: discovery plugin is eager (createInsight), root
+    // registration is still effect-based (useRootLifecycle).
+
+    const plugin = createComponentDiscoveryPlugin({ rootRegistry, componentRegistry });
+    await plugin.setup({ emit() {}, on: () => () => {} });
+
+    const appFiber = createFiber("App");
+    getInstalledHook().onCommitFiberRoot?.(1, { current: appFiber });
+
+    expect(componentRegistry.size).toBe(1);
+    expect(getOnlyComponent(componentRegistry).displayName).toBe("App");
+  });
+
+  it("self-heals rootId once the root registers on a later commit", async () => {
+    const rootRegistry = new RootRegistry();
+    const componentRegistry = new ComponentRegistry();
+
+    const plugin = createComponentDiscoveryPlugin({ rootRegistry, componentRegistry });
+    await plugin.setup({ emit() {}, on: () => () => {} });
+
+    const mountFiber = createFiber("App");
+    getInstalledHook().onCommitFiberRoot?.(1, { current: mountFiber });
+    expect(getOnlyComponent(componentRegistry).rootId).toBe("pending");
+
+    const root = createInternalRoot();
+    rootRegistry.register(root);
+
+    const updateFiber = createFiber("App");
+    Object.assign(updateFiber, { alternate: mountFiber });
+    getInstalledHook().onCommitFiberRoot?.(1, { current: updateFiber });
+
+    expect(getOnlyComponent(componentRegistry).rootId).toBe(String(root.id));
+  });
+
+
 });

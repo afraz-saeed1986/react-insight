@@ -39,7 +39,7 @@ describe("InsightProvider", () => {
       "useInsight must be used within an <InsightProvider>.",
     );
   });
-  it("registers a React root on mount", () => {
+it("registers a React root on mount", async () => {
     const insight = createInsight();
     const internalInsight = getInternalInsight(insight);
 
@@ -51,7 +51,9 @@ describe("InsightProvider", () => {
       </InsightProvider>,
     );
 
-    expect(internalInsight.rootRegistry.size).toBe(1);
+    await waitFor(() => {
+      expect(internalInsight.rootRegistry.size).toBe(1);
+    });
   });
 
   it("unregisters the React root on unmount", async () => {

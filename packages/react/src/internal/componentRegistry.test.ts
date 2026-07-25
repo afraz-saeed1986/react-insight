@@ -9,7 +9,6 @@ function createComponent(id: string): ComponentNode {
     rootId: "root",
     displayName: id,
     parentId: null,
-    children: new Set(),
     status: "mounted",
     mountedAt: Date.now(),
     unmountedAt: null,

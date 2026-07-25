@@ -47,7 +47,6 @@ sync(input: ComponentSyncInput): void {
 
     this.components.set(input.id, {
       ...structural,
-      children: new Set(),
       status: "mounted",
       mountedAt: Date.now(),
       unmountedAt: null,

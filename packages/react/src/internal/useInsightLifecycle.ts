@@ -1,15 +1,20 @@
 import type { Insight } from "../types";
 
 import { useRootLifecycle } from "./useRootLifecycle";
-import { useComponentDiscovery } from "./useComponentDiscovery";
 
 /**
  * Coordinates React Insight lifecycle integrations.
  *
- * Individual lifecycle features are delegated to dedicated hooks.
- * This hook intentionally contains no feature-specific logic.
+ * Component Discovery is intentionally NOT registered here. It is
+ * registered eagerly in createInsight() instead, because a React
+ * effect (which always runs after commit) can never observe the very
+ * first commit of the tree it lives inside. See createInsight.ts and
+ * DECISIONS.md.
+ *
+ * Root lifecycle remains effect-based: it only needs to know "a
+ * Provider mounted", which the effect running is sufficient evidence
+ * of, with no first-commit visibility requirement.
  */
 export function useInsightLifecycle(insight: Insight): void {
   useRootLifecycle(insight);
-  useComponentDiscovery(insight);
 }

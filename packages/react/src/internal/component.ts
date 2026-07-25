@@ -25,11 +25,6 @@ export interface ComponentNode {
   parentId: ComponentId | null;
 
   /**
-   * Child component identifiers.
-   */
-  children: ReadonlySet<ComponentId>;
-
-  /**
    * Current lifecycle state.
    */
   status: ComponentStatus;
