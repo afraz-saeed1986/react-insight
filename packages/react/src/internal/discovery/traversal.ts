@@ -2,6 +2,7 @@ import type { FiberNode } from "./fiberAdapter";
 import type { DiscoveredComponent } from "./discoveredComponent";
 
 const fiberIds = new WeakMap<FiberNode, string>();
+const lastObservedValues = new Map<string, { props: unknown; state: unknown }>();
 let nextFiberId = 0;
 
 interface FiberIdentity {
@@ -13,32 +14,48 @@ interface FiberIdentity {
  * Resolves a stable id for a Fiber, and whether React actually rendered
  * it in this commit.
  *
- * React reuses exactly two Fiber objects per component instance
- * (`current` <-> `alternate`), toggling which one is `root.current` on
- * every commit:
+ * Object identity (direct vs. alternate hit) is used only to resolve
+ * the stable `id` — React recycles at most two Fiber objects per
+ * component indefinitely, so identity alone cannot say whether *this*
+ * commit changed anything (a comparison against `alternate` would
+ * compare against whatever was last committed, which goes stale and
+ * stays stale forever once a component stops receiving real updates
+ * while unrelated parts of the tree keep committing — this is exactly
+ * the regression the second Playground experiment caught: siblings of
+ * an actively-updating component were being marked "rendered" on every
+ * unrelated commit, forever, after their own single real update).
  *
- * - If this exact object was already seen: React bailed out and reused
- *   `current` unchanged — not rendered this commit.
- * - If this object is new but its `alternate` was already seen: the
- *   pair swapped, meaning React actually processed this fiber — rendered.
- * - If neither was seen: first mount — rendered.
+ * `rendered` is instead derived from `lastObservedValues`, which this
+ * function itself maintains: the props/state we recorded the *last
+ * time we visited this id*, regardless of which physical Fiber object
+ * held them. This makes every comparison relative to "changed since we
+ * last looked", which self-corrects on every traversal instead of
+ * depending on a snapshot that can go stale. See DECISIONS.md,
+ * overcounting fix, for both Playground experiments that led here.
  */
 function resolveFiberIdentity(fiber: FiberNode): FiberIdentity {
-  const directHit = fiberIds.get(fiber);
+  const alternate = fiber.alternate;
+  const existingId = fiberIds.get(fiber) ?? (alternate ? fiberIds.get(alternate) : undefined);
 
-  if (directHit) {
-    return { id: directHit, rendered: false };
-  }
+  if (existingId) {
+    fiberIds.set(fiber, existingId);
 
-  const alternateHit = fiber.alternate ? fiberIds.get(fiber.alternate) : undefined;
+    const previous = lastObservedValues.get(existingId);
+    const rendered = previous
+      ? fiber.memoizedProps !== previous.props || fiber.memoizedState !== previous.state
+      : true;
 
-  if (alternateHit) {
-    fiberIds.set(fiber, alternateHit);
-    return { id: alternateHit, rendered: true };
+    lastObservedValues.set(existingId, {
+      props: fiber.memoizedProps,
+      state: fiber.memoizedState,
+    });
+
+    return { id: existingId, rendered };
   }
 
   const id = `fiber-${++nextFiberId}`;
   fiberIds.set(fiber, id);
+  lastObservedValues.set(id, { props: fiber.memoizedProps, state: fiber.memoizedState });
   return { id, rendered: true };
 }
 

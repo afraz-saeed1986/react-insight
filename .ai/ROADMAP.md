@@ -73,6 +73,8 @@
 - [x] Runtime encapsulation
 - [x] Public API tests
 - [x] React integration tests
+- [x] `Insight.getComponents()` read API (`ComponentSnapshot`)
+- [x] `installReactDevtoolsHook()` (must be called before React loads)
 
 ## React Runtime
 
@@ -103,6 +105,12 @@
 - [x] Fiber identity fix: `getFiberId()` resolves across React's `current`/`alternate` swap (see `DECISIONS.md`, 2026-07-20)
 - [x] Per-component render detection (`DiscoveredComponent.rendered`, via current/alternate resolution)
 - [x] Per-component render count / last-rendered timestamp on `ComponentNode` (`renderCount`, `lastRenderedAt`)
+- [x] End-to-end validation against a real React app (Playground) — found and fixed 4 real bugs invisible to fixture-based unit tests (see `DECISIONS.md`, 2026-07-21)
+- [x] `renderCount` overcounting fix — ancestors/siblings cloned along the reconciliation path are no longer miscounted; `resolveFiberIdentity()` now compares `memoizedProps`/`memoizedState` against a self-maintained last-observed snapshot instead of Fiber object identity, re-validated end-to-end in Playground across multiple clicks with interleaved unrelated commits (see `DECISIONS.md`, 2026-07-26)
+
+### Known limitations
+
+None currently for Render Tracking.
 
 ### Planned
 

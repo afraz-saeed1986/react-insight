@@ -744,3 +744,246 @@ Next session:
   PROJECT_CONTEXT.md's Current Focus (root-container correlation,
   ComponentRegistry change-event emission / getByRoot(), Hook/State/
   Context tracking, or Phase 3 Inspector groundwork).
+
+---
+
+## Session 16
+
+Completed:
+
+### Public Read API
+
+- Added `Insight.getComponents(): ReadonlyArray<ComponentSnapshot>`,
+  the first public way to read Component Discovery / Render Tracking
+  data — previously the entire pipeline accumulated a rich internal
+  model with zero consumer.
+- `ComponentSnapshot` defined as a new, decoupled public type rather
+  than exposing internal `ComponentNode` directly.
+- Removed `ComponentNode.children`: set at creation, never read or
+  written anywhere else — a dead placeholder field.
+
+### Playground Wired to a Real React App
+
+- `packages/playground` now depends on `@react-insight/react`,
+  `react`, `react-dom`; added `@vitejs/plugin-react`, JSX tsconfig.
+- Built a small real demo tree (`App`, `Counter`, `Display`,
+  `Greeting`, `InsightDebugPanel`) rendered through `InsightProvider`.
+- This was the first time Component Discovery and Render Tracking
+  (built across Sessions 12-15) were exercised against real React
+  commits rather than synthetic Fiber fixtures.
+
+### Four Real Bugs Found and Fixed via End-to-End Testing
+
+None of the following were caught by any prior unit test, because
+existing discovery tests call `hook.onCommitFiberRoot(...)` directly,
+bypassing the real connection/timing paths these bugs lived in:
+
+1. **DevTools hook stub missing `inject()`.** React's real renderer
+   bootstrap calls `hook.inject(...)` once at `react-dom`
+   module-init time; ours threw (method didn't exist), silently
+   blocking all discovery for the entire page session. Fixed by
+   completing the stub (`supportsFiber: true`, working `inject()`).
+
+2. **Hook installed too late.** `connectHookAdapter()` ran from inside
+   a React effect (`useComponentDiscovery`), but React checks for the
+   hook once, at `react-dom` module-load time — before any effect can
+   possibly run. Added `installReactDevtoolsHook()`, a new public
+   function the consuming app must call before importing `react-dom`
+   (same constraint React's own `react-devtools-inline` documents).
+
+3. **StrictMode register/unregister race.** Fire-and-forget
+   `use()`/`unregisterPlugin()` calls from React effects raced under
+   StrictMode's dev-mode mount→cleanup→mount double-invoke, throwing
+   "Plugin already registered" (visible as an uncaught promise
+   rejection in the browser console). Fixed by serializing every
+   register/unregister operation through a per-hook promise chain.
+
+4. **Discovery registered too late to see the first commit.** Even
+   after fixing 1-2, `componentDiscoveryPlugin` was still registered
+   from a React effect, which by definition runs _after_ the commit
+   that triggers it — so it structurally could not observe the very
+   first commit of its own tree. Fixed by registering the discovery
+   plugin eagerly inside `createInsight()`, before
+   `ReactDOM.createRoot().render()` is called. Removed
+   `useComponentDiscovery.ts`; `useInsightLifecycle()` now only
+   coordinates root lifecycle (which remains effect-based, since it
+   has no first-commit visibility requirement).
+
+   Fixing this exposed a fifth, smaller issue: root registration is
+   _still_ effect-based, so a discovery commit can now arrive before
+   any root exists. Fixed with a self-healing `"pending"` rootId
+   fallback, relying on `sync()` already updating `rootId`
+   unconditionally on every commit.
+
+### Known Limitation Found (Documented, Not Fixed)
+
+- Controlled experiment (baseline snapshot → one `Increment` click →
+  snapshot again) confirmed `renderCount` overcounts: clicking a leaf
+  component's state setter increments `renderCount` for every
+  component sharing its root, including bailed-out ancestors and
+  unrelated siblings, because React clones Fibers along the
+  reconciliation path even when their function body doesn't
+  re-execute. Root-level `commitCount` is unaffected. A correct fix
+  needs a dedicated design pass (likely `memoizedProps`/`memoizedState`
+  comparison) and was deliberately deferred rather than rushed.
+
+### Documentation
+
+Updated:
+
+- DECISIONS.md (9 new entries covering every finding above)
+- PROJECT_CONTEXT.md (Playground section rewritten — was badly stale;
+  Current Focus, Architecture Notes, Next Milestone all updated)
+- ROADMAP.md (Render Tracking marked end-to-end validated; known
+  limitation added; public API checklist updated)
+
+Current status:
+
+- Component Discovery and Render Tracking are not just implemented and
+  unit-tested, but validated end-to-end against a real React
+  application for the first time.
+- Four real, previously-invisible bugs were found and fixed.
+- One real accuracy limitation was found, confirmed, and documented
+  rather than papered over.
+- All `.ai` documentation is synchronized with the implementation as
+  of this session.
+
+Next session:
+
+- Choose the next area of work from the candidates listed in
+  PROJECT_CONTEXT.md's Current Focus (fixing the renderCount
+  overcounting limitation, a reactive `onChange()` API, root-container
+  correlation, Hook/State/Context tracking, or Phase 3 Inspector
+  groundwork).
+
+---
+
+## Session 17
+
+Completed:
+
+### renderCount Overcounting — Fixed
+
+Closed the accuracy limitation documented in Session 16
+(`DECISIONS.md`, 2026-07-21). Took three iterations, each disproven by
+a real-browser Playground experiment of a shape the prior version
+hadn't been exercised against — reinforcing, once again, that this
+subsystem cannot be trusted to fixture-based unit tests alone.
+
+1. **Hypothesis and first fix.** Compared `memoizedProps`/
+   `memoizedState` against `fiber.alternate`, but only on the
+   `alternateHit` branch of `resolveFiberIdentity()` (the pre-existing
+   `directHit` branch was left returning `rendered: false`
+   unconditionally, as before). Validated with a single-click
+   Playground experiment (temporary console logging per component):
+   only the two components that actually changed showed a props/state
+   difference; cloned-but-bailed-out ancestors and an unrelated
+   sibling did not — confirming the core hypothesis, that
+   `bailoutOnAlreadyFinishedWork` copies `memoizedProps`/
+   `memoizedState` by reference during a real bailout.
+
+2. **Regression 1 — `directHit` is not reliably "unchanged".** A
+   longer manual test (several polling-timer ticks, then one
+   `Increment` click) showed `Counter`'s own `renderCount` failing to
+   increment on a real update. Cause: React recycles at most two Fiber
+   objects per component indefinitely — from a component's _second_
+   real update onward, the object that becomes `current` was already
+   seen before (a `directHit`), even though its fields were just
+   mutated in place for a genuine re-render. Fixed by applying the
+   props/state comparison (against `alternate`) uniformly, regardless
+   of hit type.
+
+3. **Regression 2 — comparing against `alternate` goes stale.** A
+   multi-click test (baseline, then 4x `Increment` with pauses between
+   clicks, letting the `InsightDebugPanel` polling timer interleave
+   many unrelated commits) showed `Display`'s `renderCount` climbing
+   into the hundreds after only one real prop change, because once a
+   component stops receiving real updates, its `alternate` freezes at
+   its last real update forever — every later comparison is against
+   that same stale snapshot, which never matches "now". Fixed by
+   replacing the `alternate` comparison with a self-maintained
+   `lastObservedValues: Map<id, { props, state }>`, updated on every
+   resolution, so every comparison is relative to "changed since
+   Traversal itself last looked" rather than to a potentially-stale
+   Fiber object.
+
+4. **Implementation slip caught before re-validation.** After writing
+   the Regression-2 fix, an intermediate `pnpm test` run failed in a
+   way that didn't match manual reasoning about the new code; turned
+   out the previous (Regression-1-era) version of
+   `resolveFiberIdentity()` had been left in the file — pasted inside
+   `visit()` instead of being removed — so the old, already-superseded
+   logic was still the one actually executing. No logic change was
+   needed; the file just needed the duplicate function removed.
+
+5. **Final re-validation.** Baseline + 4x `Increment` click (with
+   pauses between, to let many unrelated `InsightDebugPanel` polling
+   commits interleave) confirmed `Counter` and `Display` each
+   incrementing by exactly 1 per click and nothing else, while `App`,
+   `Greeting`, and `InsightProvider` stayed completely flat across
+   dozens of unrelated commits.
+
+Files changed: `fiberAdapter.ts` (`FiberNode` gained `memoizedProps`/
+`memoizedState`), `traversal.ts` (`resolveFiberIdentity()` rewritten),
+`traversal.test.ts` (new coverage: props/state-driven `rendered`,
+cloned-ancestor bailout, recycled direct-hit fiber both changed and
+unchanged, and the stale-comparison regression itself).
+
+### Cleanup
+
+- Removed two leftover `console.log("[debug] ...")` statements
+  (`hookAdapter.ts`, `componentDiscoveryPlugin.ts`) left over from the
+  Session 16 investigation.
+- Removed `packages/playground/src/index.ts` and
+  `packages/playground/src/plugins/greetingPlugin.ts`: both had become
+  dead code once `index.html` was pointed at `index.tsx` during
+  Session 16's real-React-tree rewiring — `index.ts` was no longer
+  loaded by anything, and `greetingPlugin.ts` had no consumer left
+  besides it.
+
+### Validation
+
+Full Quality Gate (lint, typecheck, build, test) verified and passed
+after the final fix. Manual end-to-end validation in Playground
+performed twice: once per the process in point 5 above, confirming
+the fix under realistic conditions (multiple real updates interleaved
+with many unrelated commits), not just a single click.
+
+### Documentation
+
+Updated:
+
+- DECISIONS.md (new entry covering the full fix history, including
+  both intermediate regressions — kept deliberately, not compressed
+  into just the final version, since each was only caught by a
+  differently-shaped Playground test)
+- ROADMAP.md (overcounting item moved from Known limitations to
+  Completed)
+- PROJECT_CONTEXT.md (Current Focus candidate removed; Current
+  Architecture Notes updated)
+- REACT_ARCHITECTURE.md (Render Tracking section rewritten to
+  describe id resolution and `rendered` detection as independent
+  concerns; traversal.ts module description and Testing Strategy
+  updated)
+- REACT_RUNTIME_ARCHITECTURE.md (Section 6 Traversal contract
+  rewritten with the full three-iteration history; Fiber Adapter
+  shape, Cross-Layer Data Rules table, and Deferred Concerns updated)
+
+Current status:
+
+- Render Tracking (root-level commit counting and per-component
+  render detection/count) is now accurate for all previously-known
+  cases: real updates, cloned-but-bailed-out ancestors/siblings, Fiber
+  object recycling across a component's second-and-later updates, and
+  components that stop updating while the rest of the tree keeps
+  committing.
+- No known accuracy limitations remain in Render Tracking.
+- All `.ai` documentation is synchronized with the implementation as
+  of this session.
+
+Next session:
+
+- Choose the next area of work from the remaining candidates in
+  PROJECT_CONTEXT.md's Current Focus (a reactive `onChange()` API,
+  root-container correlation, Hook/State/Context tracking, or Phase 3
+  Inspector groundwork).

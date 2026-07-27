@@ -49,7 +49,14 @@ import {
   createInsight,
   InsightProvider,
   useInsight,
+  installReactDevtoolsHook,
 } from "@react-insight/react";
+
+// Must run before react-dom is imported anywhere in the module graph.
+// See "installReactDevtoolsHook()" below.
+installReactDevtoolsHook();
+
+import { createRoot } from "react-dom/client";
 
 const insight = createInsight();
 
@@ -64,6 +71,7 @@ root.render(
 function Dashboard() {
   const insight = useInsight();
 
+  const components = insight.getComponents();
   // ...
 }
 ```
@@ -83,7 +91,7 @@ The public API should:
 
 The Runtime is intentionally hidden from consumers.
 
-Applications interact only with the `Insight` abstraction.
+Applications interact only with the `Insight` abstraction — with one deliberate exception, `installReactDevtoolsHook()` (see below), which by necessity exists outside any `Insight` instance.
 
 ---
 
@@ -96,12 +104,29 @@ Responsible for:
 - Creating the internal Runtime.
 - Creating the internal RootRegistry.
 - Creating the internal ComponentRegistry.
+- Registering the Component Discovery plugin **eagerly** (synchronously, before returning), not deferred to a React effect — see "Component Discovery" below for why.
 - Returning the public `Insight` instance.
 - Delegating plugin registration.
 - Delegating plugin unregistration.
 - Delegating Runtime destruction.
+- Exposing `getComponents()`, mapping internal `ComponentNode` records to the public `ComponentSnapshot` shape.
 
 The Runtime implementation remains internal to the package.
+
+---
+
+### installReactDevtoolsHook()
+
+A standalone function, independent of any `Insight` instance, that installs `__REACT_DEVTOOLS_GLOBAL_HOOK__` if it does not already exist.
+
+Responsible for:
+
+- Being safely callable multiple times (idempotent).
+- Doing nothing (and not conflicting) if a real React DevTools extension, or another tool, already installed a hook.
+
+**Must be called by the consuming application before `react-dom` is imported anywhere in the module graph.** React's renderer checks for this hook exactly once, at its own module-initialization time; if the hook doesn't exist yet at that moment, React never discovers it for the rest of that page session, no matter what is installed afterward. This is the same constraint documented by React's own `react-devtools-inline` package.
+
+This is why the function is exported directly from the package root rather than tucked into `Insight` — an `Insight` instance cannot meaningfully exist before this call has already happened.
 
 ---
 
@@ -111,7 +136,7 @@ Responsible for:
 
 - Providing the `Insight` instance through React Context.
 - Making the public API available to React components.
-- Hosting the internal React lifecycle integration.
+- Hosting the internal root lifecycle integration (**not** Component Discovery — see below).
 
 The Provider must never own or implement Runtime behavior.
 
@@ -133,7 +158,7 @@ Consumers should never access React Context directly.
 
 The React package integrates with the Core Runtime through an internal root lifecycle plugin.
 
-The lifecycle integration is intentionally isolated behind `useInsightLifecycle()`.
+The lifecycle integration is intentionally isolated behind `useInsightLifecycle()`, which today coordinates only root lifecycle (`useRootLifecycle`) — Component Discovery is **not** part of this effect-based flow; see the next section for why.
 
 Current lifecycle flow:
 
@@ -172,30 +197,21 @@ RootRegistry.unregister()
 
 This design ensures that the Runtime remains the sole owner of the plugin lifecycle while React is responsible only for integrating Runtime with the React lifecycle.
 
+Register/unregister calls are **serialized** through a per-hook promise chain (`useRootLifecycle`) rather than fired independently. React 18+ StrictMode invokes effects as mount → cleanup → mount in development; since both operations are asynchronous (`Runtime` awaits `Plugin.setup()` / `Plugin.destroy()`), firing them independently can race — the second mount's registration running before the first mount's cleanup has actually freed the plugin's name — throwing "Plugin already registered". This was found through real StrictMode rendering in Playground, not a unit test. See `DECISIONS.md`, 2026-07-21.
+
 ---
 
 # Component Discovery
 
-The React package integrates Component Discovery through a second internal plugin, following the same integration pattern as the root lifecycle plugin.
-
-The discovery integration is isolated behind `useComponentDiscovery()`, registered alongside `useRootLifecycle()` inside `useInsightLifecycle()`.
+Unlike root lifecycle, Component Discovery is registered **eagerly, inside `createInsight()`** — synchronously, before the function returns, and therefore before the consuming application ever calls `ReactDOM.createRoot().render()`. It is **not** registered from a React effect, and there is no `useComponentDiscovery()` hook.
 
 Current discovery flow:
 
 ```text
-InsightProvider
+createInsight()
         │
         ▼
-useInsightLifecycle()
-        │
-        ▼
-useComponentDiscovery()
-        │
-        ▼
-createComponentDiscoveryPlugin()
-        │
-        ▼
-Runtime.registerPlugin()
+Runtime.registerPlugin(componentDiscoveryPlugin)
         │
         ▼
 Plugin.setup()
@@ -204,15 +220,24 @@ Plugin.setup()
 connectHookAdapter()
         │
         ▼
+installReactDevtoolsHook() (idempotent; ideally already
+called by the application before react-dom was imported)
+        │
+        ▼
 __REACT_DEVTOOLS_GLOBAL_HOOK__
 
   onCommitFiberRoot
         │
         ▼
+  RootRegistry.recordCommit() (if a root is registered yet)
+        │
+        ▼
   getFiberTraversalEntry()
         │
         ▼
-  traverse()
+  traverse()  — rootId falls back to "pending" if no root
+               is registered yet (self-heals on the next commit,
+               since sync() updates rootId unconditionally)
         │
         ▼
   mapDiscoveredComponent()
@@ -228,10 +253,7 @@ __REACT_DEVTOOLS_GLOBAL_HOOK__
         ▼
   ComponentRegistry.markUnmounted()
 
-Unmount (Provider)
-        │
-        ▼
-Runtime.unregisterPlugin()
+Runtime.destroy() / unregisterPlugin("react:discovery")
         │
         ▼
 Plugin.destroy()
@@ -240,11 +262,25 @@ Plugin.destroy()
 disconnect() — restores previous hook callbacks
 ```
 
+### Why eager, not effect-based
+
+A React effect always runs _after_ the commit that triggers it. An effect-based registration (the original design, via a `useComponentDiscovery()` hook mirroring `useRootLifecycle`) therefore structurally cannot observe the very first commit of the tree it lives inside — confirmed empirically: `onCommitFiberRoot` never fired on a page's initial render under that design. Root lifecycle doesn't have this problem because it only needs to know "a Provider mounted", which the effect running is itself sufficient evidence of; Component Discovery needs to observe actual commits, including the first one. See `DECISIONS.md`, 2026-07-21.
+
+Because discovery now connects before any root is necessarily registered (root registration is still effect-based), `onCommit` no longer bails out when `RootRegistry` is empty. Components discovered before a root registers are tagged with a `"pending"` `rootId`; the next real commit self-heals this once the real root exists, since `ComponentRegistry.sync()` already updates `rootId` unconditionally on every commit — no reconciliation logic needed.
+
+### Hook connection requires two things, not one
+
+`connectHookAdapter()` calls `installReactDevtoolsHook()` defensively (in case the application forgot to call it early), but installing the hook object alone is not sufficient. React's real renderer bootstrap (`injectInternals`) calls `hook.inject(rendererInternals)` once, at `react-dom` module-load time, to register itself; if that call throws (e.g. because `inject()` doesn't exist) or the hook wasn't present yet, React never calls `onCommitFiberRoot`/`onCommitFiberUnmount` for the rest of that page session. The installed stub therefore includes a working `inject()` (assigns and returns an incrementing renderer id) and `supportsFiber: true`, not just the two commit-notification callbacks. This was a real, previously-shipped bug — the original stub was `{ renderers: new Map() }` only — found via Playground, not a unit test (existing tests call `hook.onCommitFiberRoot(...)` directly, bypassing `inject()` entirely). See `DECISIONS.md`, 2026-07-21.
+
 The full per-layer contract (responsibility, input, output, forbidden knowledge) for Hook Adapter, Fiber Adapter, Traversal, Mapper and Component Registry is defined in `REACT_RUNTIME_ARCHITECTURE.md`, Section 6.
 
 Architectural boundary: no type whose name or shape depends on React Fiber crosses the Mapper. Only `ComponentNode` (and its structural subset, `ComponentSyncInput`) is allowed to travel from the Mapper down into `ComponentRegistry` and, eventually, Plugins.
 
 Unmount handling marks the component record as unmounted (`status: "unmounted"`, `unmountedAt: <timestamp>`) rather than removing it from the registry, preserving its history for future consumers such as Timeline or Inspector. See `DECISIONS.md`, 2026-07-19.
+
+Render Tracking uses the Fiber `current`/`alternate` machinery for two separate purposes, resolved together by `resolveFiberIdentity()`: a stable **id** (a direct or `alternate` WeakMap hit reuses the existing id; no hit at all means first mount, minting a new one), and a **`rendered` verdict**, which is _not_ derived from which hit occurred. React recycles at most two Fiber objects per component indefinitely, so object identity alone is only a reliable "unchanged" signal for a component's first update — the same object reference reappears as `current` again on every second-and-later real update, and comparing against `alternate` goes stale once a component stops receiving real updates while the rest of the tree keeps committing. Instead, `rendered` compares the incoming `memoizedProps`/`memoizedState` against a self-maintained `lastObservedValues` map (keyed by the stable id, updated on every resolution), so every check is relative to "changed since the last time this id was seen" rather than to a potentially-stale Fiber object. `DiscoveredComponent.rendered` carries this signal through to `ComponentNode.renderCount` / `lastRenderedAt`. See `DECISIONS.md`, 2026-07-20 and 2026-07-26.
+
+This closes what was previously documented here as a known accuracy limitation: React clones (assigns a new Fiber object to) every ancestor and sibling along the reconciliation path down to an actually-updated component, even when their own function body bailed out (didn't re-execute); the props/state comparison correctly reports these as not rendered regardless of the object-identity churn. Root-level `RootRegistry.commitCount` was never affected by any version of this, since it doesn't depend on Fiber identity. See `DECISIONS.md`, 2026-07-26, for the two intermediate regressions (each caught only by a differently-shaped real-browser Playground test) that the final design had to survive.
 
 Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18):
 
@@ -282,16 +318,17 @@ The React package provides the official React integration.
 Responsibilities:
 
 - `createInsight()`
+- `installReactDevtoolsHook()`
 - `InsightProvider`
 - `useInsight()`
 - React Context
 - React lifecycle integration
 - Internal root lifecycle infrastructure
 - Internal lifecycle plugins
-- RootRegistry
-- ComponentRegistry
+- RootRegistry (including commit counting)
+- ComponentRegistry (including render tracking and unmount history)
 - Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper)
-- Internal Component Discovery plugin
+- Internal Component Discovery plugin, registered eagerly from `createInsight()`
 - Future React-specific features
 
 The React package consumes the Runtime provided by `@react-insight/core`.
@@ -319,22 +356,21 @@ Each package should have a single, well-defined responsibility.
 
 The React package separates its public API from internal implementation details.
 
-Internal modules are not exported from the package entry point.
+Internal modules are not exported from the package entry point, with one deliberate exception: `installReactDevtoolsHook()` is exported from `internal/discovery/hookAdapter.ts` at the package root, because it must be callable before an `Insight` instance can exist. See "Public API" above.
 
 Current internal implementation includes:
 
 - Internal Runtime symbol
 - Internal Runtime holder types
 - Internal Runtime access helpers
-- Internal Root model
+- Internal Root model (including commit counting)
 - Internal RootRegistry
-- Internal Component model
+- Internal Component model (including render tracking and unmount history)
 - Internal ComponentRegistry
-- Internal React lifecycle hooks
+- Internal root lifecycle hook (`useRootLifecycle`, effect-based)
 - Internal Root Lifecycle Plugin
-- Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper)
+- Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper) — registered eagerly, not via a hook
 - Internal Component Discovery Plugin
-- Internal `useComponentDiscovery` hook
 - Private React Context
 
 This separation allows internal refactoring without introducing breaking API changes.
@@ -372,9 +408,10 @@ packages/react
 │       ├── index.ts
 │       ├── root.ts
 │       ├── rootRegistry.ts
+│       ├── RootRegistry.test.ts
 │       ├── runtime.ts
-│       ├── useComponentDiscovery.ts
 │       ├── useInsightLifecycle.ts
+│       ├── useInsightLifecycle.test.tsx
 │       ├── useRootLifecycle.ts
 │       │
 │       ├── discovery/
@@ -399,6 +436,10 @@ packages/react
 └── vitest.config.ts
 ```
 
+Note: `useComponentDiscovery.ts` was removed (2026-07-21) — its logic
+was absorbed into `createInsight()`'s eager registration. There is no
+longer a React hook for Component Discovery.
+
 ---
 
 # Module Responsibilities
@@ -412,8 +453,10 @@ Responsibilities:
 - Create the internal Runtime.
 - Create the internal RootRegistry.
 - Create the internal ComponentRegistry.
+- Register the Component Discovery plugin eagerly (synchronously, before returning) — see "Component Discovery" above.
 - Hide Runtime implementation details.
 - Delegate Runtime operations.
+- Expose `getComponents()` (maps `ComponentNode` → public `ComponentSnapshot`).
 - Return the public API.
 
 ---
@@ -426,7 +469,7 @@ Responsibilities:
 
 - React Context Provider
 - Context wiring
-- Internal React lifecycle integration
+- Internal root lifecycle integration (`useInsightLifecycle` → `useRootLifecycle` only; Component Discovery is not registered here)
 
 Must not implement Runtime logic.
 
@@ -455,12 +498,14 @@ Stores the internal representation of mounted React components. It is the sole o
 Responsibilities:
 
 - Register components (`register()`, throws on duplicate id — used where a duplicate is a genuine error).
-- Synchronize discovered components without throwing on an existing id (`sync()` — decides mount vs. update by comparing against existing state).
+- Synchronize discovered components without throwing on an existing id (`sync()` — decides mount vs. update by comparing against existing state; updates `rootId`/`displayName`/`parentId` unconditionally on every call, which is what allows the discovery pipeline's `"pending"`-rootId fallback to self-heal for free).
 - Unregister components (`unregister()` — hard removal), or mark them unmounted while preserving their history (`markUnmounted()` — sets `status: "unmounted"` and `unmountedAt`, keeps the record).
 - Lookup components.
-- Maintain framework-agnostic component state (`status`, `mountedAt`, `unmountedAt`).
+- Maintain framework-agnostic component state (`status`, `mountedAt`, `unmountedAt`, `renderCount`, `lastRenderedAt`).
 
 Has no knowledge of React Fiber or how components were discovered.
+
+`ComponentNode.children` was removed (2026-07-21): set at creation, never read or written anywhere else in the codebase — a placeholder field with no producer or consumer.
 
 ---
 
@@ -470,19 +515,23 @@ Contains the Component Discovery pipeline. Each module maps to one layer of the 
 
 ### hookAdapter.ts
 
-Safely connects to `__REACT_DEVTOOLS_GLOBAL_HOOK__`. Installs it if absent, chains any existing `onCommitFiberRoot` / `onCommitFiberUnmount` instead of overwriting them, and isolates callback errors so they never reach React's renderer.
+Exports `installReactDevtoolsHook()` (public, standalone — see "Public API" above) and `connectHookAdapter()` (internal, used by `componentDiscoveryPlugin`).
+
+`installReactDevtoolsHook()` installs `__REACT_DEVTOOLS_GLOBAL_HOOK__` if absent, with a stub that includes a working `inject()` and `supportsFiber: true` — not just the commit-notification callbacks — since React's renderer bootstrap requires a successful `inject()` call to consider itself connected.
+
+`connectHookAdapter()` calls `installReactDevtoolsHook()` defensively, then chains any existing `onCommitFiberRoot` / `onCommitFiberUnmount` instead of overwriting them, and isolates callback errors so they never reach React's renderer.
 
 ### fiberAdapter.ts
 
-Extracts the traversal entry point from a raw `FiberRoot` (`getFiberTraversalEntry`), and validates/narrows a raw unmount value into a Fiber-shaped object (`asFiberNode`). The only module allowed to know the shape of a raw Fiber/FiberRoot.
+Extracts the traversal entry point from a raw `FiberRoot` (`getFiberTraversalEntry`), and validates/narrows a raw unmount value into a Fiber-shaped object (`asFiberNode`). The only module allowed to know the shape of a raw Fiber/FiberRoot — including `alternate`, used for identity resolution.
 
 ### traversal.ts
 
-Walks a Fiber tree from the entry point, filtering to function/class component fibers only, and assigns stable per-Fiber ids via a `WeakMap` (`getFiberId`, exported so unmount handling can resolve the same id). Produces `DiscoveredComponent[]`.
+Walks a Fiber tree from the entry point, filtering to function/class component fibers only, and assigns stable per-Fiber ids via a `WeakMap` (`getFiberId`, exported so unmount handling can resolve the same id). Resolves whether each fiber was actually rendered this commit (vs. merely present or merely cloned along the reconciliation path) by comparing `memoizedProps`/`memoizedState` against a self-maintained last-observed-values snapshot per stable id, not against Fiber object identity (`resolveFiberIdentity`; see `DECISIONS.md`, 2026-07-26). Produces `DiscoveredComponent[]`, each carrying a `rendered: boolean`.
 
 ### componentMapper.ts
 
-Pure, stateless translation from `DiscoveredComponent` to `ComponentSyncInput` (structural fields only: `id`, `rootId`, `displayName`, `parentId`). Never decides lifecycle state.
+Pure, stateless translation from `DiscoveredComponent` to `ComponentSyncInput` (`id`, `rootId`, `displayName`, `parentId`, `rendered`). Never decides lifecycle state itself.
 
 ### discoveredComponent.ts
 
@@ -492,30 +541,16 @@ Defines the `DiscoveredComponent` type — the internal contract between Travers
 
 ## internal/plugins/componentDiscoveryPlugin.ts
 
-Wires the discovery pipeline into the Runtime plugin lifecycle.
+Wires the discovery pipeline into the Runtime plugin lifecycle. Registered eagerly by `createInsight()` — see "Component Discovery" above for why this is not effect-based.
 
 Responsibilities:
 
 - Connect the Hook Adapter on `setup()`.
-- On commit: resolve the active root, run Traversal + Mapper, call `ComponentRegistry.sync()` for each discovered component.
+- On commit: record the commit on the active root if one is registered (`RootRegistry.recordCommit()`); run Traversal + Mapper using the active root's id, or a `"pending"` fallback if no root is registered yet; call `ComponentRegistry.sync()` for each discovered component.
 - On unmount: resolve the Fiber id and call `ComponentRegistry.markUnmounted()`, preserving the component record instead of removing it.
 - Disconnect the Hook Adapter on `destroy()`.
 
 Follows the same `definePlugin()` pattern as `rootLifecyclePlugin`.
-
----
-
-## useComponentDiscovery.ts
-
-Registers the Component Discovery plugin for the lifetime of the component that calls it.
-
-Responsibilities:
-
-- Create the plugin via `createComponentDiscoveryPlugin()`.
-- Register it with the Runtime on mount.
-- Unregister it on cleanup.
-
-Contains no discovery logic itself — delegates entirely to the plugin.
 
 ---
 
@@ -525,7 +560,7 @@ Acts as the internal orchestration point for React integration.
 
 Responsibilities:
 
-- Coordinate internal lifecycle hooks (`useRootLifecycle`, `useComponentDiscovery`).
+- Coordinate `useRootLifecycle`. (Component Discovery is registered eagerly by `createInsight()`, not coordinated here — see "Component Discovery" above.)
 - Keep the public API isolated from React internals.
 - Contains no feature-specific logic itself.
 
@@ -538,8 +573,7 @@ Coordinates the React root lifecycle with the internal Root Lifecycle Plugin.
 Responsibilities:
 
 - Create the Root Lifecycle Plugin
-- Register the plugin on mount
-- Unregister the plugin on cleanup
+- Register the plugin on mount, unregister on cleanup — both **serialized** through a per-hook promise chain (not fired independently), to remain correct under React 18+ StrictMode's development-mode mount → cleanup → mount double-invoke. See `DECISIONS.md`, 2026-07-21.
 - Synchronize RootRegistry with React lifecycle
 
 ---
@@ -560,8 +594,8 @@ Contains internal Runtime integration plugins.
 
 Current plugins:
 
-- Root Lifecycle Plugin
-- Component Discovery Plugin
+- Root Lifecycle Plugin (effect-based registration)
+- Component Discovery Plugin (eager registration, from `createInsight()`)
 
 These plugins are not part of the public API and may evolve independently from the public React interface.
 
@@ -576,15 +610,15 @@ Current contents:
 - Runtime symbol
 - Internal Runtime holder types
 - Internal Runtime helpers
-- Internal Root model
+- Internal Root model (including commit counting)
 - RootRegistry
-- Internal Component model
+- Internal Component model (including render tracking and unmount history)
 - ComponentRegistry
-- Component Discovery pipeline (`discovery/`)
-- React lifecycle hooks
+- Component Discovery pipeline (`discovery/`), including the one public exception, `installReactDevtoolsHook()`
+- Root lifecycle hook (`plugins/`)
 - Internal lifecycle plugins (`plugins/`)
 
-Nothing inside this directory is part of the public API.
+Nothing else inside this directory is part of the public API.
 
 ---
 
@@ -595,11 +629,13 @@ Exports only the supported public API.
 Current exports:
 
 - `createInsight`
+- `installReactDevtoolsHook`
 - `InsightProvider`
 - `useInsight`
 - `Insight`
+- `ComponentSnapshot`
 
-Internal modules must never be re-exported.
+Internal modules must never be re-exported, except `installReactDevtoolsHook` (documented exception — see "Internal Architecture" above).
 
 ---
 
@@ -609,20 +645,23 @@ The React package follows the same quality standards as the Core package.
 
 Current test coverage includes:
 
-- `createInsight()`
+- `createInsight()`, including `getComponents()` and eager Component Discovery registration (a commit observed before `InsightProvider` even mounts)
 - `InsightProvider`
 - `useInsight()`
-- `RootRegistry`
-- `ComponentRegistry` (including `sync()` mount/update behavior and `markUnmounted()`)
+- `useInsightLifecycle()` under real React `<StrictMode>` rendering (register/unregister serialization — no console errors, registry ends up correctly populated)
+- `RootRegistry`, including `recordCommit()`
+- `ComponentRegistry` (`sync()` mount/update behavior, `markUnmounted()`, render-count accounting only incrementing when `rendered: true`)
 - Root Lifecycle Plugin
-- Component Discovery Plugin (commit/sync, no-active-root no-op, unmount via `markUnmounted()`, disconnect on destroy)
+- Component Discovery Plugin (commit/sync, commits that precede root registration — `"pending"` rootId and self-heal on the next commit, unmount via `markUnmounted()`, disconnect on destroy)
 - Provider lifecycle integration
 - Mount / Unmount synchronization
 - Public API encapsulation
 - Fiber Adapter (`getFiberTraversalEntry`)
-- Traversal (filtering, parent resolution, stable ids)
-- Component Mapper (structural translation)
-- Hook Adapter (installation, chaining, error isolation, disconnect)
+- Traversal (filtering, parent resolution, stable ids via `current`/`alternate` identity, and `rendered` detection via last-observed props/state comparison — including cloned-but-bailed-out ancestors, recycled direct-hit fibers, and repeated unrelated commits after a component's last real update)
+- Component Mapper (structural translation, including `rendered`)
+- Hook Adapter (`installReactDevtoolsHook()` idempotency and stub shape including `inject()`, `connectHookAdapter()` installation, chaining, error isolation, disconnect)
+
+**End-to-end validation (Playground):** unit tests alone were insufficient to catch several real bugs in this subsystem, because they invoke `hook.onCommitFiberRoot(...)` directly rather than going through React's actual `inject()`-based connection handshake or real effect/StrictMode timing. Playground renders a real component tree through `InsightProvider` and is the required final check for any change to Component Discovery or Render Tracking. See `DECISIONS.md`, 2026-07-21.
 
 Every public API should have automated tests before new features are introduced.
 
@@ -634,13 +673,15 @@ Every public API should have automated tests before new features are introduced.
 - React owns React integration only.
 - Runtime remains internal.
 - Runtime exclusively owns plugin lifecycle.
-- Consumers interact through `Insight`.
+- Consumers interact through `Insight`, with one deliberate exception: `installReactDevtoolsHook()`, which must be callable before an `Insight` instance exists.
 - React Context is private.
 - Hooks are the public access layer.
-- React lifecycle integration is isolated behind internal plugins.
-- Component Discovery integration is isolated behind an internal plugin, following the same pattern as React lifecycle.
+- Root lifecycle integration is isolated behind an internal effect-based plugin (`useRootLifecycle`).
+- Component Discovery integration is isolated behind an internal plugin, registered **eagerly** by `createInsight()` rather than by an effect-based hook — a deliberate deviation from the root lifecycle pattern, because Component Discovery must observe the tree's first commit, which no effect can ever do.
+- Register/unregister calls originating from React effects are serialized (never fired independently), to remain correct under React StrictMode's development-mode double-invoke.
 - No type whose name or shape depends on React Fiber crosses the Mapper boundary.
 - `ComponentRegistry` is the sole owner of component lifecycle state; upstream discovery layers (Traversal, Mapper) remain stateless.
 - Unmount preserves component history (`markUnmounted()`) rather than discarding it; `unregister()` remains available for hard removal where that is genuinely intended.
+- No field or method is added to a domain model without a real, current consumer (`ComponentNode.children` was removed for violating this).
 - Public API remains minimal and stable.
 - Internal implementation may evolve without breaking consumers.

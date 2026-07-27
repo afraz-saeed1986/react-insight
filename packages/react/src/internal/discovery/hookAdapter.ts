@@ -100,7 +100,6 @@ export function connectHookAdapter(
     }
   };
 
-    console.log("[debug] hookAdapter connected, onCommitFiberRoot is now:", typeof hook.onCommitFiberRoot);
 
   hook.onCommitFiberUnmount = (rendererId, fiber) => {
     previousOnCommitFiberUnmount?.(rendererId, fiber);

@@ -44,7 +44,6 @@ export function createComponentDiscoveryPlugin(
         onCommit(root) {
           // Discovery currently assumes a single React application per
           // page. See DECISIONS.md, 2026-07-18.
-          console.log("[debug] onCommit callback invoked");
           const activeRoot = options.rootRegistry.list()[0];
 
           if (activeRoot) {

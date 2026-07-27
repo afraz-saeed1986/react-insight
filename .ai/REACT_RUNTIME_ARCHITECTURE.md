@@ -2,7 +2,7 @@
 
 > Status: Draft
 >
-> Last Updated: 2026-07-18
+> Last Updated: 2026-07-26
 >
 > This document defines the long-term architecture of the React runtime package. It serves as the primary architectural reference for all React-specific runtime features, including component discovery, tracking, inspection, and future DevTools integration.
 
@@ -113,6 +113,8 @@ Every architectural layer should be independently testable.
 
 Business logic should not require a running React application whenever possible.
 
+Unit tests alone are not sufficient for this pipeline, however: several real bugs (hook connection timing, a missing `inject()` implementation, registration-timing relative to React's first commit) were only found through end-to-end testing against a real React application (Playground) — see `DECISIONS.md`, 2026-07-21. Unit tests remain necessary for algorithmic correctness (filtering, id stability, render detection); Playground remains necessary for connection/timing correctness.
+
 ---
 
 ## Performance
@@ -130,6 +132,8 @@ Performance optimizations should never compromise architectural clarity.
 All runtime APIs are internal unless a real public consumer requires otherwise.
 
 Public APIs are introduced only when justified by actual usage.
+
+The one exception found so far, `installReactDevtoolsHook()`, is not a violation of this goal: it is internal-by-default in the sense that it does nothing an application couldn't already do by installing the hook itself — it is exported only because the timing requirement it encodes (must run before `react-dom` is imported) cannot be satisfied any other way. See Section 6, Hook Adapter.
 
 ---
 
@@ -232,6 +236,8 @@ Placeholder APIs are prohibited.
 
 Unused extension points are prohibited.
 
+This applies in both directions: a field or method must not be added without a real consumer, and an existing field must not be left in place once it demonstrably has none (`ComponentNode.children` was removed on 2026-07-21 for exactly this reason — set at creation, never read or written anywhere else).
+
 ---
 
 ## Principle 6 — Incremental Evolution
@@ -312,6 +318,25 @@ The pipeline is intentionally linear to simplify reasoning, testing, and future 
                        Timeline / Inspector
 ```
 
+**Note on Render Tracking (2026-07-21):** the diagram above still
+depicts Render Tracking as a distinct downstream consumer of the
+Registry, as originally envisioned. The implementation shipped so far
+diverges from this slightly: root-level commit counting lives on
+`RootRegistry` (a sibling of `ComponentRegistry`, not downstream of
+it), and per-component render detection is resolved inside Traversal
+itself (as a `rendered: boolean` fact about each discovered component,
+computed via a `memoizedProps`/`memoizedState` comparison layered on
+top of the same per-Fiber identity resolution already needed for
+stable ids — see Section 6, Traversal) and merely stored by the
+Registry via `sync()`, rather than being computed by a separate
+downstream "Render Tracking" layer that reads the Registry. This was a
+pragmatic choice: the necessary signal was already available at the
+Traversal layer at no extra cost, and introducing a separate
+consumer layer for it would have been exactly the kind of premature
+abstraction Principle 5 prohibits. Hook Tracking / Context Tracking,
+if and when built, may or may not follow the same pattern — that
+decision is deferred until they have a concrete design.
+
 ---
 
 ## Data Flow
@@ -358,6 +383,21 @@ State belongs inside registries.
 Tracking owns historical information.
 
 Presentation owns visualization.
+
+Note: Traversal's per-Fiber id assignment (`getFiberId`, via a
+`WeakMap`) and its `rendered` detection (comparing a Fiber's current
+`memoizedProps`/`memoizedState` against a self-maintained
+`lastObservedValues` map, keyed by stable id — deliberately
+independent of Fiber object identity, see `DECISIONS.md`, 2026-07-26)
+are a deliberate, narrow exception to full statelessness — they
+require memory of previously-seen Fiber _objects_ (for id assignment)
+and previously-observed prop/state values (for `rendered` detection)
+to resolve identity and change across commits. This is still
+considered "stateless" in the
+architectural sense used here: it holds no _domain_ state (no
+`ComponentNode`, no lifecycle status), only an implementation detail
+needed to produce a correct, stateless-from-the-Registry's-perspective
+output on every call.
 
 ---
 
@@ -520,6 +560,29 @@ absent, chain any existing `onCommitFiberRoot` / `onCommitFiberUnmount`
 callbacks instead of overwriting them, and isolate errors thrown by
 downstream code so they never reach React's renderer.
 
+Hook installation is split into two functions with different
+visibility and timing requirements:
+
+- **`installReactDevtoolsHook()`** — public, standalone, independent
+  of any Plugin or `Insight` instance. Installs a hook stub if one
+  doesn't already exist. The stub must include a working `inject()`
+  (assigns and returns an incrementing renderer id) and
+  `supportsFiber: true`, not just the two commit-notification
+  callbacks — React's renderer bootstrap (`injectInternals`) calls
+  `hook.inject(...)` once, at `react-dom` module-load time, and if
+  that call fails or the hook isn't present yet, React never notifies
+  the hook of commits for the rest of the page session, regardless of
+  what is installed afterward. This function must be called by the
+  consuming application before `react-dom` is imported anywhere in
+  its module graph — confirmed empirically, not just documented by
+  React's own `react-devtools-inline` package, which states the same
+  constraint. See `DECISIONS.md`, 2026-07-21.
+- **`connectHookAdapter()`** — internal, used by
+  `componentDiscoveryPlugin`. Calls `installReactDevtoolsHook()`
+  defensively (for graceful, if late, degradation when the consuming
+  application forgot to call it early), then attaches the actual
+  commit/unmount callbacks.
+
 **Input**
 
 Raw calls made by React itself:
@@ -558,6 +621,14 @@ The internal runtime event produced by the Hook Adapter.
 A single Fiber reference representing the traversal entry point for
 this event.
 
+The `FiberNode` shape owned by this layer includes an `alternate:
+FiberNode | null` reference, required by Traversal for stable-id
+resolution, and `memoizedProps: unknown` / `memoizedState: unknown`
+fields, required by Traversal for `rendered` detection (see Traversal
+below — these two concerns are resolved independently of each other
+as of `DECISIONS.md`, 2026-07-26). Fiber Adapter remains the only
+module allowed to know this shape exists.
+
 **Must not know**
 
 - The existence of `__REACT_DEVTOOLS_GLOBAL_HOOK__` or how the
@@ -575,6 +646,61 @@ or hierarchical list of Fibers that qualify as "components" under
 React Insight's definition (filtering out host/internal Fiber types
 such as Fragment or HostText), preserving parent-child relationships.
 
+For each qualifying Fiber, also resolves a stable **id** and whether
+React actually rendered it in this commit (**`rendered`**). These two
+facts are resolved by the same function (`resolveFiberIdentity()`),
+but from `DECISIONS.md`, 2026-07-26 onward they are derived from two
+different signals, not one:
+
+**Stable id** — via identity resolution against `fiber.alternate`:
+
+- A direct hit on the Fiber object itself, or a hit via
+  `fiber.alternate` (already seen), reuses the existing id.
+- Neither means first mount — mints a new id.
+
+This is what keeps `getFiberId()` stable across renders: without
+checking `alternate`, a component's first re-render would receive a
+new id (its Fiber object swaps to the previously unseen alternate),
+which previously caused `ComponentRegistry.sync()` to treat every
+re-rendered component as a new mount, leaving the original entry as a
+permanent orphaned "ghost" — fixed 2026-07-20, see `DECISIONS.md`.
+
+**`rendered`** — via a `memoizedProps`/`memoizedState` comparison
+against `lastObservedValues`, a `Map<id, { props, state }>` that
+Traversal maintains itself, updated on every resolution — **not**
+against Fiber object identity or against `alternate`. Two earlier
+identity-based designs were tried and rejected, each only after being
+disproven by a real-browser Playground experiment of a shape the
+prior design hadn't been exercised against:
+
+- Comparing object identity alone (direct hit = not rendered,
+  alternate hit = rendered) overcounted every ancestor/sibling cloned
+  along the reconciliation path to a real update, even when their own
+  function body bailed out — since React clones a new Fiber object
+  for them without re-executing anything. This was the limitation
+  originally documented here on 2026-07-21.
+- Comparing `memoizedProps`/`memoizedState` against `alternate`
+  (rather than against raw object identity) fixed the above, but
+  broke down on two further axes: (1) React recycles at most two
+  Fiber objects per component indefinitely, so from a component's
+  _second_ real update onward, `current` is an already-seen object
+  whose fields were mutated in place — `alternate` is not reliably
+  "the previous version" once recycling starts; (2) even where
+  `alternate` was reliable, it goes permanently stale for a component
+  that stops receiving real updates while the rest of the tree keeps
+  committing — every later comparison is against the same frozen
+  snapshot, which never matches "now", so `rendered` incorrectly
+  stayed `true` forever.
+
+Comparing against a self-maintained `lastObservedValues` snapshot
+(updated on every call, not tied to which physical Fiber object holds
+`current`) avoids both failure modes: every comparison is relative to
+"changed since Traversal itself last looked", regardless of Fiber
+object recycling. Root-level `RootRegistry.commitCount` was never
+affected by any version of this, since it doesn't depend on Fiber
+identity at all. See `DECISIONS.md`, 2026-07-26, for the full
+experiment history.
+
 **Input**
 
 A single Fiber reference (from the Fiber Adapter).
@@ -583,7 +709,9 @@ A single Fiber reference (from the Fiber Adapter).
 
 A list of minimal, extracted records — not raw Fiber references —
 containing only the fields required downstream: an identifier, a
-display name, and a parent identifier.
+display name, a parent identifier, and whether this fiber was
+rendered in this commit (`rendered: boolean`, per the resolution
+above).
 
 **Must not know**
 
@@ -608,22 +736,27 @@ change in the future without touching traversal logic.
 
 Pure, stateless translation of a single extracted Traversal record
 into the structural shape of a `ComponentNode` (`id`, `rootId`,
-`displayName`, `parentId` only).
+`displayName`, `parentId`), plus a straight pass-through of the
+`rendered` flag Traversal already resolved.
 
 **Input**
 
-One extracted record from Traversal.
+One extracted record from Traversal (including `rendered`).
 
 **Output**
 
-A partial `ComponentNode` containing only structural fields
-(`ComponentSyncInput`).
+A partial `ComponentNode` containing structural fields plus
+`rendered` (`ComponentSyncInput`).
 
 **Must not know**
 
 - Whether this component is new, updated, or being removed.
-- `mountedAt`, `unmountedAt`, or `status` — these are lifecycle
-  decisions, not structural ones.
+- `mountedAt`, `unmountedAt`, `status`, `renderCount`, or
+  `lastRenderedAt` — these are lifecycle/history decisions, not
+  structural ones. Passing `rendered` through is not a lifecycle
+  decision: it is an observational fact about this specific commit
+  that Traversal already computed; the Mapper does not derive it, it
+  only relays it unchanged.
 - `ComponentRegistry` internals or any existing stored state.
 
 **Scope rationale**
@@ -643,15 +776,29 @@ is trivially testable with plain fixtures.
 
 Own all Component state. Compare each incoming `ComponentSyncInput`
 against currently stored state to decide whether it represents a
-mount or an update (`sync()`), and remove state on explicit unmount
-notifications (`unregister()`). Own `mountedAt`, `unmountedAt`, and
-`status`.
+mount or an update (`sync()`), and mark components as unmounted
+without discarding their history (`markUnmounted()`) on explicit
+unmount notifications from the Hook Adapter → Fiber Adapter →
+Traversal path. Own `mountedAt`, `unmountedAt`, `status`,
+`renderCount`, and `lastRenderedAt`.
+
+`sync()` updates structural fields (`rootId`, `displayName`,
+`parentId`) unconditionally on every call, and increments
+`renderCount` / updates `lastRenderedAt` only when the incoming
+`rendered` flag is `true`. Updating `rootId` unconditionally is what
+allows the discovery pipeline to tag components with a temporary
+`"pending"` `rootId` before any root is registered (see the React
+package's `componentDiscoveryPlugin`, which is registered eagerly and
+can therefore observe commits before root registration completes) —
+the next real commit self-heals `rootId` to the actual value at no
+extra cost, with no reconciliation logic needed in the Registry
+itself. See `DECISIONS.md`, 2026-07-21.
 
 **Input**
 
 `ComponentSyncInput` values (from Mapper, via `sync()`) and component
-ids to remove (from the Hook Adapter → Fiber Adapter → Traversal
-unmount path, via `unregister()`).
+ids to mark unmounted (from the Hook Adapter → Fiber Adapter →
+Traversal unmount path, via `markUnmounted()`).
 
 **Output**
 
@@ -660,25 +807,32 @@ A query API for consumers: `get(id)`, `has(id)`, `values()`, `size`.
 **Must not know**
 
 - Fiber, Traversal, or how discovery happened.
+- Anything about eager vs. effect-based plugin registration timing —
+  the Registry's unconditional `rootId` update on `sync()` happens to
+  make it tolerant of that timing, but the Registry itself has no
+  awareness of _why_ a `rootId` might be `"pending"`.
 
 **Implementation status**
 
 Change-event emission and root-scoped querying (`getByRoot`) are not
 implemented yet — see "Deferred Concerns" below. `register()` (which
-throws on a duplicate id) is retained separately from `sync()` for
-callers where a duplicate id is a genuine error rather than an update.
+throws on a duplicate id) and `unregister()` (hard removal) are
+retained separately from `sync()`/`markUnmounted()` for callers where
+a duplicate id is a genuine error, or a full removal is genuinely
+intended, respectively — the discovery pipeline itself only ever uses
+`sync()`/`markUnmounted()`.
 
 ---
 
 ## Cross-Layer Data Rules
 
-| Boundary                     | Model that crosses it                            | Allowed below this boundary?                              |
-| ---------------------------- | ------------------------------------------------ | --------------------------------------------------------- |
-| React → Hook Adapter         | Raw React callback arguments                     | No — never leaves Hook Adapter                            |
-| Hook Adapter → Fiber Adapter | Internal runtime event (raw Fiber/FiberRoot ref) | No — never leaves Fiber Adapter                           |
-| Fiber Adapter → Traversal    | Single Fiber entry point                         | No — never leaves Traversal                               |
-| Traversal → Mapper           | `DiscoveredComponent` (no Fiber reference)       | No — internal contract only between Traversal and Mapper  |
-| Mapper → Registry → Plugins  | `ComponentSyncInput` / `ComponentNode`           | Yes — the only models allowed to travel the full pipeline |
+| Boundary                     | Model that crosses it                                                                     | Allowed below this boundary?                              |
+| ---------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| React → Hook Adapter         | Raw React callback arguments                                                              | No — never leaves Hook Adapter                            |
+| Hook Adapter → Fiber Adapter | Internal runtime event (raw Fiber/FiberRoot ref)                                          | No — never leaves Fiber Adapter                           |
+| Fiber Adapter → Traversal    | Single Fiber entry point (including `alternate`, `memoizedProps`, `memoizedState`)        | No — never leaves Traversal                               |
+| Traversal → Mapper           | `DiscoveredComponent` (id, displayName, parentId, rootId, `rendered`; no Fiber reference) | No — internal contract only between Traversal and Mapper  |
+| Mapper → Registry → Plugins  | `ComponentSyncInput` / `ComponentNode`                                                    | Yes — the only models allowed to travel the full pipeline |
 
 No type whose name or shape depends on React Fiber may cross the
 Mapper boundary. This is the same boundary already defined in
@@ -696,10 +850,15 @@ tracked in `DECISIONS.md`:
 - `ComponentRegistry` change-event emission through the Core event
   system — no current consumer (no Plugin observes Registry changes
   yet); Plugins that need discovery results call the Registry's query
-  API directly today.
+  API directly today. `Insight.getComponents()` (2026-07-21) is a
+  pull-based read, not a change subscription, and doesn't change this.
 - `ComponentRegistry.getByRoot()` — no current consumer; discovery
   currently assumes a single root (see `DECISIONS.md`, 2026-07-18 —
   single React application per page).
+
+Per-component render detection for ancestors/siblings cloned along a
+reconciliation path without themselves re-rendering is no longer a
+deferred concern — see Traversal above and `DECISIONS.md`, 2026-07-26.
 
 Each may be introduced later without breaking this contract, provided
 a real consumer is identified first.

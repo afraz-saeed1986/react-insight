@@ -756,3 +756,359 @@ fiber identity fix. This mirrors the general technique used by React
 DevTools and community tools built on
 `__REACT_DEVTOOLS_GLOBAL_HOOK__` (e.g. `react-debug-updates`) to detect
 re-renders without wrapping user code.
+
+---
+
+## 2026-07-21
+
+### Playground wired to a real React app for end-to-end validation
+
+`packages/playground` now depends on `@react-insight/react`, `react`,
+and `react-dom`, with a small demo tree (`App`, `Counter`, `Display`,
+`Greeting`, `InsightDebugPanel`) rendered through `InsightProvider`.
+
+Reason:
+
+Component Discovery (Sessions 12-15) and Render Tracking (Session 14-15)
+had never been validated against a real React commit — only synthetic
+Fiber fixtures in unit tests. This session found four real bugs (see
+the following entries) that no synthetic-fixture unit test could have
+caught, confirming Playground's original stated purpose ("first real
+consumer... validates Runtime behavior and DX before publishing") had
+been neglected since the React package's introduction.
+
+---
+
+## 2026-07-21
+
+### Added Insight.getComponents() public read API
+
+`Insight` gains `getComponents(): ReadonlyArray<ComponentSnapshot>`.
+`ComponentSnapshot` is a new public type, intentionally decoupled from
+the internal `ComponentNode` shape.
+
+Reason:
+
+`ComponentRegistry` had accumulated a rich internal model (mount/unmount
+status, render count) with zero way for any consumer — including
+Playground — to read it. This was the actual blocker preventing
+Playground from validating Component Discovery / Render Tracking at
+all, and is a prerequisite for any future Inspector/DevTools panel.
+
+---
+
+## 2026-07-21
+
+### Removed ComponentNode.children (dead field)
+
+`children: ReadonlySet<ComponentId>` was set to `new Set()` at mount
+and never read or written anywhere else in the codebase.
+
+Reason:
+
+Same no-placeholder-field principle already applied to `rendererId`
+and (briefly) to `status`/`unmountedAt` before `markUnmounted()` gave
+them a producer. `children` never got a producer and had no consumer;
+removed rather than left as dead weight. Can be reintroduced with a
+real design once something needs to render a component tree (e.g. a
+future Inspector).
+
+---
+
+## 2026-07-21
+
+### Fixed: DevTools hook stub was missing inject(), silently blocking all discovery
+
+The stub installed by `connectHookAdapter()` was `{ renderers: new Map() }`
+— no `inject()` method. React's real renderer bootstrap
+(`injectInternals`) calls `hook.inject(rendererInternals)` once, at
+`react-dom` module-initialization time, to register itself; if that
+call throws (missing method) or the hook doesn't exist yet, React
+never calls `onCommitFiberRoot`/`onCommitFiberUnmount` for the rest of
+that page session — confirmed by `renderers.size` staying `0` even
+after commits were otherwise observed working end-to-end elsewhere in
+this session's testing.
+
+Fix: the stub now includes `supportsFiber: true` and a real `inject()`
+(assigns and returns an incrementing renderer id, stores into
+`renderers`), extracted into `createStubHook()`.
+
+Reason:
+
+Discovered only through real-browser testing (Playground). No unit
+test could have caught this: existing tests call
+`hook.onCommitFiberRoot(...)` directly, bypassing `react-dom`'s own
+`inject()`-based connection handshake entirely.
+
+---
+
+## 2026-07-21
+
+### Added installReactDevtoolsHook(), a new pre-React-load public entry point
+
+React's renderer checks for `__REACT_DEVTOOLS_GLOBAL_HOOK__` exactly
+once, at `react-dom` module-initialization time. If the hook is
+installed later (e.g. from inside a React effect, which is where
+`connectHookAdapter()` used to run via `componentDiscoveryPlugin`),
+React never discovers it for that page load — confirmed both by
+React's own `react-devtools-inline` documentation ("This method must
+be called before React is loaded") and empirically in this session.
+
+`installReactDevtoolsHook()` is now exported from `@react-insight/react`
+(`internal/discovery/hookAdapter.ts`), idempotent, and must be called
+by the consuming application before importing `react-dom` anywhere in
+the module graph. `connectHookAdapter()` also calls it defensively for
+graceful (if late) degradation.
+
+Reason:
+
+This is a deliberate, narrow exception to "nothing under `internal/`
+is exported publicly": this function is inherently independent of any
+`Insight` instance and must run before one can even be created in a
+correctly-ordered app. The same precedent exists in React's own
+`react-devtools-inline` package (a standalone top-level `initialize()`
+function with the identical constraint).
+
+---
+
+## 2026-07-21
+
+### Fixed: plugin register/unregister raced under StrictMode's double-invoke
+
+`useRootLifecycle` (and, before its removal, `useComponentDiscovery`)
+fired `insight.use(plugin)` and the cleanup's `unregisterPlugin(name)`
+independently ("fire and forget"). React 18+ StrictMode invokes
+effects as mount -> cleanup -> mount in development; since
+`Runtime.unregisterPlugin()` awaits `Plugin.destroy()` before freeing
+the plugin's name from `PluginManager`, the second mount's
+registration could run before the first mount's cleanup had actually
+freed the name, throwing "Plugin ... is already registered" —
+confirmed via an uncaught promise rejection in the browser console.
+
+Fix: register/unregister operations are now serialized through a
+per-hook `useRef`-held promise chain, so every operation waits for the
+previous one to fully settle regardless of exactly how closely spaced
+in time React schedules the effect/cleanup calls.
+
+Reason:
+
+Found only through real StrictMode rendering in Playground; no
+existing unit test rendered through `<StrictMode>`. A regression test
+was added (`useInsightLifecycle.test.tsx`) rendering through
+`<StrictMode>` and asserting no console errors.
+
+---
+
+## 2026-07-21
+
+### Fixed: component discovery registered too late to see the first commit
+
+`componentDiscoveryPlugin` was registered via `useComponentDiscovery()`,
+called from a React effect inside `InsightProvider`. Effects always run
+_after_ the commit that triggers them, so an effect-based registration
+structurally cannot observe the very first commit of its own tree (the
+one that mounts `InsightProvider` itself) — confirmed empirically:
+`onCommitFiberRoot` never fired on initial page load under the old
+registration, only after a subsequent user-triggered commit.
+
+Fix: `componentDiscoveryPlugin` is now registered eagerly inside
+`createInsight()`, which runs before `ReactDOM.createRoot().render()`
+in the application entry point. `useComponentDiscovery.ts` was removed;
+`useInsightLifecycle()` now only coordinates `useRootLifecycle`, which
+remains effect-based (it only needs to know "a Provider mounted", with
+no first-commit visibility requirement).
+
+Reason:
+
+Root lifecycle and component discovery have fundamentally different
+timing requirements, so they can no longer share the same
+effect-based registration strategy.
+
+---
+
+## 2026-07-21
+
+### Fixed: commits before root registration were silently dropped ("pending" rootId)
+
+A side effect of the previous fix: `componentDiscoveryPlugin` now
+connects before the very first commit, but root registration
+(`useRootLifecycle`) is still effect-based and therefore still runs
+_after_ that first commit. `onCommit` used to bail out entirely
+(`if (!activeRoot) return;`) when no root was registered yet, silently
+dropping the first commit's components forever (StrictMode only
+re-invokes effects, not a full tree commit, so there was no second
+chance).
+
+Fix: `onCommit` now always runs discovery, tagging components with a
+`"pending"` `rootId` fallback when no root is registered yet.
+`ComponentRegistry.sync()` already updates `rootId` unconditionally on
+every commit, so once the real root registers, the next commit
+self-heals the correct `rootId` at no extra cost — no reconciliation
+logic needed.
+
+Reason:
+
+Preferred over deferring/buffering pre-root commits, which would add
+real complexity for a case that resolves itself for free on the very
+next commit.
+
+---
+
+## 2026-07-21
+
+### Known limitation: fiber cloning along the update path inflates renderCount for ancestors and siblings
+
+Confirmed via a controlled Playground experiment (baseline snapshot,
+one `Increment` click, snapshot again): clicking a leaf component's
+state setter increments `renderCount` not only for that component, but
+for _every_ component sharing its root — including ancestors that
+bailed out (function body not re-invoked) and unrelated siblings.
+
+Cause: React reconciles from the root on every update. Even when an
+ancestor's function body doesn't re-execute (real bailout), React still
+constructs a new work-in-progress Fiber (clone) for it and the fibers
+along the path down to the updated component, so that new child/sibling
+links can be attached. `resolveFiberIdentity()` (traversal.ts) treats
+"Fiber object identity changed via the alternate pair" as "rendered",
+which is accurate for the component that actually triggered the
+update, but over-counts every fiber merely cloned along the path to it.
+
+This is not fixed in this session. A correct fix requires distinguishing
+"cloned because an ancestor is on the path to a real update" from
+"actually re-executed", which likely needs comparing `memoizedProps`/
+`memoizedState` rather than raw Fiber identity — a more invasive,
+version-sensitive internals dependency that deserves its own dedicated
+design pass (the same caution already applied when profiler-timing
+fields were considered and deferred, 2026-07-20).
+
+Reason for documenting rather than fixing now:
+
+Root-level commit counting (`RootRegistry.commitCount`) remains fully
+accurate and unaffected — it doesn't depend on Fiber identity at all.
+Per-component `renderCount` is accurate for leaf/isolated updates but
+overcounts along shared ancestor paths; this is now a documented,
+known accuracy limitation (like `rendererId` and
+`onPostCommitFiberRoot`), not a silently-wrong number.
+
+---
+
+## 2026-07-21
+
+### Playground's InsightDebugPanel polls instead of reading data reactively
+
+`insight.getComponents()` is a pull-based snapshot API with no change
+notification. `InsightDebugPanel` (Playground only) polls it via
+`setInterval` every 500ms so the demo UI stays reasonably current.
+
+Reason:
+
+A real reactive API (e.g. `insight.onChange(callback)`) has no current
+consumer beyond this one demo panel, so per the no-placeholder-API
+principle it is deferred rather than spec'd now. Revisit if/when a
+real Inspector or DevTools panel consumer needs push-based updates.
+
+## 2026-07-26
+
+### Fixed: renderCount overcounting for ancestor/sibling Fibers cloned along the reconciliation path
+
+Previously documented as a known limitation (2026-07-21, "fiber cloning
+along the update path inflates renderCount for ancestors and
+siblings"). Root-caused and fixed this session, through two rounds of
+controlled Playground experiments — the fix required two iterations
+because each version was correct against the experiment that motivated
+it, but wrong against a fuller one.
+
+**Attempt 1 — compare `memoizedProps`/`memoizedState` against `alternate`,
+only on the alternate-hit path.**
+
+Confirmed the core hypothesis: `bailoutOnAlreadyFinishedWork` copies
+`memoizedProps`/`memoizedState` by reference from `current` during a
+real bailout, so an unchanged reference on both means the fiber's
+function body didn't re-execute, even if the Fiber _object_ was cloned.
+Validated with a single-click Playground experiment (console logging
+`propsEqual`/`stateEqual` per component): only the two components that
+actually changed (`Counter`, whose own state changed; `Display`, whose
+props changed) showed `false`, while cloned-but-bailed-out ancestors
+(`App`, `InsightProvider`) and an unrelated sibling (`Greeting`) all
+showed `true`/`true`.
+
+This version only applied the comparison on the `alternateHit` branch
+of `resolveFiberIdentity`, leaving the pre-existing `directHit` branch
+returning `rendered: false` unconditionally, as before.
+
+**Regression found — directHit is not reliably "unchanged".**
+
+A longer manual Playground test (baseline snapshot, then one
+`Increment` click after several polling-timer ticks had already
+elapsed) showed `Counter`'s `renderCount` failing to increment on a
+real update. Cause: React recycles at most two Fiber objects per
+component indefinitely — from a component's _second_ real update
+onward, the object that becomes `current` is one already seen before
+(a `directHit`), even though its fields were just mutated in place for
+a genuine re-render. Object identity alone (direct vs. alternate hit)
+is only a reliable "nothing changed" signal for a component's first
+update; comparing against `alternate` doesn't help here either, since
+`alternate` also gets recycled and mutated over time.
+
+**Regression found — comparing against `alternate` goes stale for
+components that stop updating.**
+
+Applying the props/state comparison uniformly (against `alternate`,
+regardless of hit type) fixed the above, but a longer multi-click
+Playground test (baseline, then 4x `Increment` clicks with a ~3s pause
+after each, observing snapshots the whole way) surfaced a second,
+worse regression: `Display`, after its one real update, kept being
+reported as `rendered: true` on every subsequent unrelated commit
+(reached `renderCount: 183` after a few dozen background polling
+ticks, despite never receiving new props again). Cause: once a
+component stops receiving real updates while the rest of the tree
+keeps committing, its `alternate` freezes at whatever it was during
+its last real update — every later comparison is against that same
+stale snapshot, which never matches "now", so `rendered` stays `true`
+forever.
+
+**Final fix: compare against a self-maintained "last observed"
+snapshot, not against `alternate`.**
+
+`resolveFiberIdentity()` now keeps a `Map<id, { props, state }>`
+(`lastObservedValues`) recording what was seen the _last time this
+function was called_ for a given stable id, independent of which
+physical Fiber object currently holds `current`. Every call — direct
+hit, alternate hit, or new id — compares the incoming
+`memoizedProps`/`memoizedState` against that map entry (not
+`alternate`), then updates the map entry to the current values. This
+makes every comparison relative to "changed since the last time we
+looked", which self-corrects on every traversal rather than depending
+on a snapshot that can go stale.
+
+Re-validated end-to-end in Playground: baseline + 4x `Increment` click
+(with pauses between, to let many unrelated `InsightDebugPanel`
+polling commits interleave) showed `Counter` and `Display` each
+incrementing by exactly 1 per click and nothing else, while `App`,
+`Greeting`, and `InsightProvider` stayed completely flat across dozens
+of unrelated commits.
+
+Files changed: `packages/react/src/internal/discovery/fiberAdapter.ts`
+(`FiberNode` gained `memoizedProps`/`memoizedState`),
+`packages/react/src/internal/discovery/traversal.ts`
+(`resolveFiberIdentity()` rewritten as above),
+`packages/react/src/internal/discovery/traversal.test.ts` (new
+coverage for: props/state-driven rendered detection, a cloned ancestor
+with unchanged props/state, a recycled direct-hit fiber that changed
+again, a recycled direct-hit fiber that didn't change, and the
+stale-comparison regression itself — repeated unrelated commits after
+a component's last real update must not keep reporting `rendered`).
+
+Reason:
+
+This closes the last known accuracy gap in Render Tracking.
+Root-level `commitCount` was never affected by any of this (it doesn't
+depend on Fiber identity at all); only per-component `renderCount` was.
+The two intermediate regressions are recorded here deliberately,
+because each was itself only caught by a real-browser Playground test
+of a shape the previous fix hadn't been exercised against (a single
+click; then a delayed single click; then multiple clicks with pauses)
+— reinforcing the project's existing rule that unit tests against
+fixture Fibers alone would not have caught either regression.
+
+---

@@ -3,6 +3,8 @@ export interface FiberNode {
   child: FiberNode | null;
   sibling: FiberNode | null;
   alternate: FiberNode | null;
+  memoizedProps: unknown;
+  memoizedState: unknown;
 }
 
 interface FiberRootContainer {
