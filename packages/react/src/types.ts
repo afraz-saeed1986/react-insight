@@ -15,6 +15,23 @@ export interface ComponentSnapshot {
   readonly mountedAt: number;
   readonly lastRenderedAt: number | null;
   readonly unmountedAt: number | null;
+
+  /**
+   * Structural summary of this component's hooks (count, order,
+   * best-effort kind classification — see internal/discovery/
+   * hookInspector.ts for what this can and cannot distinguish, e.g.
+   * useState/useReducer and useMemo/useCallback share a kind).
+   */
+  readonly hooks: ReadonlyArray<{
+    readonly index: number;
+    readonly kind:
+      | "state"
+      | "ref"
+      | "memo-like"
+      | "effect"
+      | "layout-effect"
+      | "unknown";
+  }>;
 }
 
 export interface Insight {

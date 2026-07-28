@@ -282,6 +282,22 @@ Render Tracking uses the Fiber `current`/`alternate` machinery for two separate 
 
 This closes what was previously documented here as a known accuracy limitation: React clones (assigns a new Fiber object to) every ancestor and sibling along the reconciliation path down to an actually-updated component, even when their own function body bailed out (didn't re-execute); the props/state comparison correctly reports these as not rendered regardless of the object-identity churn. Root-level `RootRegistry.commitCount` was never affected by any version of this, since it doesn't depend on Fiber identity. See `DECISIONS.md`, 2026-07-26, for the two intermediate regressions (each caught only by a differently-shaped real-browser Playground test) that the final design had to survive.
 
+### Hook Tracking (structural)
+
+`inspectHooks()` walks the hooks linked list rooted at a function component Fiber's `memoizedState` and produces a `HookSummary[]` (`{ index, kind }`) for each discovered component, threaded through the same pipeline as `rendered`: `DiscoveredComponent.hooks` → `ComponentSyncInput.hooks` → `ComponentNode.hooks` → `ComponentSnapshot.hooks`. Unlike `rendered`, `hooks` is updated unconditionally on every `sync()` (a structural fact like `displayName`, not an accumulated stat like `renderCount`).
+
+This is a **structural-only, always-on** inspection: no re-render, no instrumented dispatcher, consistent with the same zero-instrumentation positioning already established for Render Tracking (`DECISIONS.md`, 2026-07-20). It was deliberately chosen over the technique real React DevTools uses (`react-debug-tools`'s `inspectHooksOfFiber`, which re-invokes the component function with an instrumented dispatcher to recover hook _names_, including custom hook boundaries, via call-stack parsing) — that technique is real per-inspection work, intended by React's own team to run on-demand only, not on every commit for every component. See `DECISIONS.md`, 2026-07-27.
+
+Because `isComponentFiber()` elsewhere in this package intentionally treats function and class components alike (both are `typeof === "function"` in JavaScript — a distinction that doesn't matter for identity/render-detection), `inspectHooks()` independently guards against class components, whose `memoizedState` is `this.state`, not a hooks list: it checks `type.prototype.isReactComponent`, the same marker React's own reconciler uses internally to decide whether to construct a class instance, rather than an unstable Fiber `tag` number. Class components report `hooks: []`.
+
+**Known limitations** (confirmed via a controlled Playground experiment against a probe component exercising every common hook, not assumed — see `DECISIONS.md`, 2026-07-27):
+
+- `useState` and `useReducer` share an identical Fiber-level shape and both report `kind: "state"`.
+- `useMemo` and `useCallback` share an identical shape and both report `kind: "memo-like"`.
+- `useEffect` and `useLayoutEffect` _are_ distinguishable, via a bitmask on the Effect object's `tag` field (confirmed empirically: `9` = `useEffect`, `5` = `useLayoutEffect`).
+- `useContext` (and any custom hook that is purely a `useContext` wrapper) is entirely invisible to `inspectHooks()` — `readContext()` does not consume a hook slot at all, so no entry appears in the hooks list.
+- No hook values, and no hook or custom-hook _names_, are available from this technique at any hook kind — see above.
+
 Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18):
 
 - Renderer identity (`rendererId`) is not tracked — single renderer (`react-dom`) assumed.
@@ -326,8 +342,8 @@ Responsibilities:
 - Internal root lifecycle infrastructure
 - Internal lifecycle plugins
 - RootRegistry (including commit counting)
-- ComponentRegistry (including render tracking and unmount history)
-- Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper)
+- ComponentRegistry (including render tracking, structural hook tracking, and unmount history)
+- Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector)
 - Internal Component Discovery plugin, registered eagerly from `createInsight()`
 - Future React-specific features
 
@@ -365,11 +381,11 @@ Current internal implementation includes:
 - Internal Runtime access helpers
 - Internal Root model (including commit counting)
 - Internal RootRegistry
-- Internal Component model (including render tracking and unmount history)
+- Internal Component model (including render tracking, structural hook tracking, and unmount history)
 - Internal ComponentRegistry
 - Internal root lifecycle hook (`useRootLifecycle`, effect-based)
 - Internal Root Lifecycle Plugin
-- Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper) — registered eagerly, not via a hook
+- Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector) — registered eagerly, not via a hook
 - Internal Component Discovery Plugin
 - Private React Context
 
@@ -420,6 +436,8 @@ packages/react
 │       │   ├── fiberAdapter.test.ts
 │       │   ├── hookAdapter.ts
 │       │   ├── hookAdapter.test.ts
+│       │   ├── hookInspector.ts
+│       │   ├── hookInspector.test.ts
 │       │   ├── componentMapper.ts
 │       │   ├── componentMapper.test.ts
 │       │   ├── traversal.ts
@@ -498,10 +516,10 @@ Stores the internal representation of mounted React components. It is the sole o
 Responsibilities:
 
 - Register components (`register()`, throws on duplicate id — used where a duplicate is a genuine error).
-- Synchronize discovered components without throwing on an existing id (`sync()` — decides mount vs. update by comparing against existing state; updates `rootId`/`displayName`/`parentId` unconditionally on every call, which is what allows the discovery pipeline's `"pending"`-rootId fallback to self-heal for free).
+- Synchronize discovered components without throwing on an existing id (`sync()` — decides mount vs. update by comparing against existing state; updates `rootId`/`displayName`/`parentId`/`hooks` unconditionally on every call, which is what allows the discovery pipeline's `"pending"`-rootId fallback to self-heal for free).
 - Unregister components (`unregister()` — hard removal), or mark them unmounted while preserving their history (`markUnmounted()` — sets `status: "unmounted"` and `unmountedAt`, keeps the record).
 - Lookup components.
-- Maintain framework-agnostic component state (`status`, `mountedAt`, `unmountedAt`, `renderCount`, `lastRenderedAt`).
+- Maintain framework-agnostic component state (`status`, `mountedAt`, `unmountedAt`, `renderCount`, `lastRenderedAt`, `hooks`).
 
 Has no knowledge of React Fiber or how components were discovered.
 
@@ -523,15 +541,19 @@ Exports `installReactDevtoolsHook()` (public, standalone — see "Public API" ab
 
 ### fiberAdapter.ts
 
-Extracts the traversal entry point from a raw `FiberRoot` (`getFiberTraversalEntry`), and validates/narrows a raw unmount value into a Fiber-shaped object (`asFiberNode`). The only module allowed to know the shape of a raw Fiber/FiberRoot — including `alternate`, used for identity resolution.
+Extracts the traversal entry point from a raw `FiberRoot` (`getFiberTraversalEntry`), and validates/narrows a raw unmount value into a Fiber-shaped object (`asFiberNode`). The only module allowed to know the shape of a raw Fiber/FiberRoot — including `alternate` (used for identity resolution), `memoizedProps`/`memoizedState` (used for render detection), and the `HookNode` type describing a single node of a function component's hooks linked list (used by Hook Inspector).
 
 ### traversal.ts
 
-Walks a Fiber tree from the entry point, filtering to function/class component fibers only, and assigns stable per-Fiber ids via a `WeakMap` (`getFiberId`, exported so unmount handling can resolve the same id). Resolves whether each fiber was actually rendered this commit (vs. merely present or merely cloned along the reconciliation path) by comparing `memoizedProps`/`memoizedState` against a self-maintained last-observed-values snapshot per stable id, not against Fiber object identity (`resolveFiberIdentity`; see `DECISIONS.md`, 2026-07-26). Produces `DiscoveredComponent[]`, each carrying a `rendered: boolean`.
+Walks a Fiber tree from the entry point, filtering to function/class component fibers only, and assigns stable per-Fiber ids via a `WeakMap` (`getFiberId`, exported so unmount handling can resolve the same id). Resolves whether each fiber was actually rendered this commit (vs. merely present or merely cloned along the reconciliation path) by comparing `memoizedProps`/`memoizedState` against a self-maintained last-observed-values snapshot per stable id, not against Fiber object identity (`resolveFiberIdentity`; see `DECISIONS.md`, 2026-07-26). Also calls Hook Inspector for each component fiber to produce its `hooks` summary. Produces `DiscoveredComponent[]`, each carrying `rendered: boolean` and `hooks: HookSummary[]`.
+
+### hookInspector.ts
+
+Walks a function component Fiber's hooks linked list (`fiber.memoizedState`) and classifies each hook by structural shape alone (`classifyHook()`), producing `HookSummary[]` (`inspectHooks()`). Guards against class components via `type.prototype.isReactComponent`. Never re-renders or invokes user code. See "Hook Tracking (structural)" above for the full design rationale and known limitations.
 
 ### componentMapper.ts
 
-Pure, stateless translation from `DiscoveredComponent` to `ComponentSyncInput` (`id`, `rootId`, `displayName`, `parentId`, `rendered`). Never decides lifecycle state itself.
+Pure, stateless translation from `DiscoveredComponent` to `ComponentSyncInput` (`id`, `rootId`, `displayName`, `parentId`, `rendered`, `hooks`). Never decides lifecycle state itself.
 
 ### discoveredComponent.ts
 
@@ -546,7 +568,7 @@ Wires the discovery pipeline into the Runtime plugin lifecycle. Registered eager
 Responsibilities:
 
 - Connect the Hook Adapter on `setup()`.
-- On commit: record the commit on the active root if one is registered (`RootRegistry.recordCommit()`); run Traversal + Mapper using the active root's id, or a `"pending"` fallback if no root is registered yet; call `ComponentRegistry.sync()` for each discovered component.
+- On commit: record the commit on the active root if one is registered (`RootRegistry.recordCommit()`); run Traversal (including Hook Inspector) + Mapper using the active root's id, or a `"pending"` fallback if no root is registered yet; call `ComponentRegistry.sync()` for each discovered component.
 - On unmount: resolve the Fiber id and call `ComponentRegistry.markUnmounted()`, preserving the component record instead of removing it.
 - Disconnect the Hook Adapter on `destroy()`.
 
@@ -612,7 +634,7 @@ Current contents:
 - Internal Runtime helpers
 - Internal Root model (including commit counting)
 - RootRegistry
-- Internal Component model (including render tracking and unmount history)
+- Internal Component model (including render tracking, structural hook tracking, and unmount history)
 - ComponentRegistry
 - Component Discovery pipeline (`discovery/`), including the one public exception, `installReactDevtoolsHook()`
 - Root lifecycle hook (`plugins/`)
@@ -635,7 +657,7 @@ Current exports:
 - `Insight`
 - `ComponentSnapshot`
 
-Internal modules must never be re-exported, except `installReactDevtoolsHook` (documented exception — see "Internal Architecture" above).
+Internal modules must never be re-exported, except `installReactDevtoolsHook` (documented exception — see "Internal Architecture" above). `HookKind`/`HookSummary` are not exported separately; they are inlined into `ComponentSnapshot.hooks`' element type, since there is no current consumer needing them as standalone named types.
 
 ---
 
@@ -650,7 +672,7 @@ Current test coverage includes:
 - `useInsight()`
 - `useInsightLifecycle()` under real React `<StrictMode>` rendering (register/unregister serialization — no console errors, registry ends up correctly populated)
 - `RootRegistry`, including `recordCommit()`
-- `ComponentRegistry` (`sync()` mount/update behavior, `markUnmounted()`, render-count accounting only incrementing when `rendered: true`)
+- `ComponentRegistry` (`sync()` mount/update behavior, `markUnmounted()`, render-count accounting only incrementing when `rendered: true`, `hooks` updated unconditionally like other structural fields)
 - Root Lifecycle Plugin
 - Component Discovery Plugin (commit/sync, commits that precede root registration — `"pending"` rootId and self-heal on the next commit, unmount via `markUnmounted()`, disconnect on destroy)
 - Provider lifecycle integration
@@ -658,10 +680,11 @@ Current test coverage includes:
 - Public API encapsulation
 - Fiber Adapter (`getFiberTraversalEntry`)
 - Traversal (filtering, parent resolution, stable ids via `current`/`alternate` identity, and `rendered` detection via last-observed props/state comparison — including cloned-but-bailed-out ancestors, recycled direct-hit fibers, and repeated unrelated commits after a component's last real update)
-- Component Mapper (structural translation, including `rendered`)
+- Hook Inspector (`classifyHook()` per hook shape — state, ref, memo-like, effect, layout-effect, unknown; hook order preservation across a multi-hook chain; class components returning an empty array instead of misreading `this.state`)
+- Component Mapper (structural translation, including `rendered` and `hooks`)
 - Hook Adapter (`installReactDevtoolsHook()` idempotency and stub shape including `inject()`, `connectHookAdapter()` installation, chaining, error isolation, disconnect)
 
-**End-to-end validation (Playground):** unit tests alone were insufficient to catch several real bugs in this subsystem, because they invoke `hook.onCommitFiberRoot(...)` directly rather than going through React's actual `inject()`-based connection handshake or real effect/StrictMode timing. Playground renders a real component tree through `InsightProvider` and is the required final check for any change to Component Discovery or Render Tracking. See `DECISIONS.md`, 2026-07-21.
+**End-to-end validation (Playground):** unit tests alone were insufficient to catch several real bugs in this subsystem, because they invoke `hook.onCommitFiberRoot(...)` directly rather than going through React's actual `inject()`-based connection handshake or real effect/StrictMode timing. Playground renders a real component tree through `InsightProvider` and is the required final check for any change to Component Discovery, Render Tracking, or Hook Tracking. See `DECISIONS.md`, 2026-07-21 and 2026-07-27.
 
 Every public API should have automated tests before new features are introduced.
 
@@ -680,8 +703,9 @@ Every public API should have automated tests before new features are introduced.
 - Component Discovery integration is isolated behind an internal plugin, registered **eagerly** by `createInsight()` rather than by an effect-based hook — a deliberate deviation from the root lifecycle pattern, because Component Discovery must observe the tree's first commit, which no effect can ever do.
 - Register/unregister calls originating from React effects are serialized (never fired independently), to remain correct under React StrictMode's development-mode double-invoke.
 - No type whose name or shape depends on React Fiber crosses the Mapper boundary.
-- `ComponentRegistry` is the sole owner of component lifecycle state; upstream discovery layers (Traversal, Mapper) remain stateless.
+- `ComponentRegistry` is the sole owner of component lifecycle state; upstream discovery layers (Traversal, Mapper, Hook Inspector) remain stateless.
 - Unmount preserves component history (`markUnmounted()`) rather than discarding it; `unregister()` remains available for hard removal where that is genuinely intended.
 - No field or method is added to a domain model without a real, current consumer (`ComponentNode.children` was removed for violating this).
+- Runtime observation stays zero-instrumentation and always-on (no `<Profiler>`, no re-render, no wrapped user code) for both Render Tracking and structural Hook Tracking; techniques requiring re-invoking user code (e.g. hook value/name resolution) are deliberately scoped as a separate, on-demand capability rather than folded into the always-on traversal pass.
 - Public API remains minimal and stable.
 - Internal implementation may evolve without breaking consumers.

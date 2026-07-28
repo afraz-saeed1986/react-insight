@@ -1,3 +1,5 @@
+import type { HookSummary } from "./hookInspector";
+
 export type DiscoveredComponentId = string;
 
 /**
@@ -20,4 +22,11 @@ export interface DiscoveredComponent {
    * out subtree). See traversal.ts, resolveFiberIdentity().
    */
   readonly rendered: boolean;
+
+  /**
+   * Structural summary of this component's hooks (count, order, best-
+   * effort kind classification). See hookInspector.ts for what this
+   * can and cannot distinguish. Empty for class components.
+   */
+  readonly hooks: readonly HookSummary[];
 }

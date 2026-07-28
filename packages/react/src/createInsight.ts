@@ -39,7 +39,7 @@ export function createInsight(): Insight {
       return runtime.destroy();
     },
 
-    getComponents() {
+getComponents() {
       return [...componentRegistry.values()].map((component) => ({
         id: component.id,
         displayName: component.displayName,
@@ -49,6 +49,7 @@ export function createInsight(): Insight {
         mountedAt: component.mountedAt,
         lastRenderedAt: component.lastRenderedAt,
         unmountedAt: component.unmountedAt,
+        hooks: component.hooks,
       }));
     },
 

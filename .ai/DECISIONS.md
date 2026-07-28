@@ -1112,3 +1112,113 @@ click; then a delayed single click; then multiple clicks with pauses)
 fixture Fibers alone would not have caught either regression.
 
 ---
+
+## 2026-07-27
+
+### Added: structural Hook Tracking (`inspectHooks()`)
+
+Began Hook Tracking, chosen from the open candidates in
+`PROJECT_CONTEXT.md`'s Current Focus over `onChange()` / root-container
+correlation / `ComponentRegistry` change-event emission (all still
+without a real current consumer — see 2026-07-27 "Current Focus"
+update below) and over starting Phase 3 Inspector groundwork (which
+needs Hook/State data that didn't exist yet).
+
+**Research before implementation.** Initially assumed hook type/name
+detection would work like a lighter version of what we'd need for
+render tracking (heuristics over `fiber.memoizedState` shape). Actual
+research into how real React DevTools does this (`react-debug-tools`,
+`inspectHooksOfFiber`) showed this assumption was wrong: DevTools does
+not read Fiber shape at all for hook _names_ — it re-invokes the
+component function with an instrumented dispatcher that intercepts
+each hook call at the call site, and resolves custom hook names via
+call-stack parsing (which breaks under minification, a limitation
+React's own team has documented). This is real work done on-demand
+only when a component is explicitly inspected, not on every commit —
+confirmed by the React team's own discussion of the performance cost
+of doing this during profiling (referenced in `facebook/react#16477`).
+
+**Decision: structural-only tracking for this slice (Path A), not the
+DevTools re-render technique (Path B).** Consistent with this
+project's existing zero-instrumentation, no-wrapper positioning for
+Render Tracking (2026-07-20). Path B remains a valid future addition,
+scoped as an on-demand `inspectHooks(componentId)`-style API distinct
+from the always-on traversal, once Inspector work has a concrete
+design — deliberately deferred, not rejected.
+
+**Validated the actual Hook object shape before writing
+classification logic**, via a controlled Playground experiment (a
+temporary `HookInspectorProbe` component exercising `useState`,
+`useRef`, `useMemo`, `useCallback`, `useEffect`, `useLayoutEffect`,
+logging each hook's `memoizedState`/`queue` shape). Findings:
+
+- `useState`/`useReducer` share an identical shape (`queue` present,
+  with a `dispatch`) — not distinguishable from shape alone.
+- `useRef` has a unique shape (`{ current }`, no `queue`).
+- `useMemo`/`useCallback` share an identical shape (`[value, deps]`
+  array, no `queue`) — not distinguishable from shape alone.
+- `useEffect`/`useLayoutEffect` _are_ distinguishable, via a bitmask
+  on the Effect object's `tag` field: `Passive` (`0b1000`) vs.
+  `Layout` (`0b0100`) — confirmed empirically as `9` (`HasEffect |
+Passive`) and `5` (`HasEffect | Layout`) respectively, matching
+  `react-reconciler`'s internal (unexported) `ReactHookEffectTags.js`
+  constants. This was better resolution than originally expected.
+
+**Implementation:** `inspectHooks(fiber)` walks the hooks linked list
+rooted at `fiber.memoizedState` and returns `HookSummary[]` (`{ index,
+kind }`), where `kind` is one of `state | ref | memo-like | effect |
+layout-effect | unknown`. Guards against class components (whose
+`memoizedState` is `this.state`, not a hooks list) via the same marker
+React itself uses internally to detect class components
+(`type.prototype.isReactComponent`) — a deliberate departure from this
+package's existing `isComponentFiber()`, which intentionally treats
+function and class components alike for identity/render-detection
+purposes (where the distinction doesn't matter) but does matter here.
+
+Threaded through the existing pipeline the same way `rendered` was:
+`FiberNode` gained a sibling `HookNode` type (`fiberAdapter.ts`),
+`DiscoveredComponent`/`ComponentSyncInput`/`ComponentNode` each gained
+a `hooks: readonly HookSummary[]` field, `ComponentRegistry.sync()`
+updates it unconditionally (a structural fact like `displayName`, not
+an accumulated stat like `renderCount`), and the public
+`ComponentSnapshot` exposes it read-only.
+
+**Validated end-to-end in Playground**, not just unit-tested: every
+component's actual hook list matched hand-verified expectations
+(`Counter`/`App` → `[state]`; `Display`/`Greeting` → `[]`;
+`InsightProvider` → `[ref, effect]`, matching `useRootLifecycle`'s
+internal `useRef` + `useEffect`). No bugs found this time — the
+Playground experiment confirmed the design ahead of the final
+implementation, rather than disproving it after the fact.
+
+**Known limitation found during that same validation, not assumed in
+advance:** `useContext` does not consume a hook slot at all —
+`readContext()` is called directly by React's `mountContext`/
+`updateContext` internals without pushing an entry onto the hooks
+linked list. Confirmed by `InsightDebugPanel` (which calls
+`useInsight()`, itself `useContext`-based, plus its own `useState` and
+`useEffect`) reporting only 2 hooks, not 3. This means any hook that
+is purely a thin `useContext` wrapper is invisible to `inspectHooks()`
+entirely, not merely unclassified — a distinct limitation from the
+already-known `useState`/`useReducer` and `useMemo`/`useCallback`
+shape ambiguity.
+
+Files changed: `fiberAdapter.ts` (new `HookNode` type),
+`hookInspector.ts` (new — `classifyHook()`, `inspectHooks()`),
+`hookInspector.test.ts` (new), `discoveredComponent.ts`,
+`traversal.ts`, `componentMapper.ts`, `component.ts`,
+`componentRegistry.ts`, `types.ts`, `createInsight.ts`.
+
+Reason:
+
+This is the first slice of Hook Tracking (Roadmap Phase 2). It
+deliberately does not attempt hook values, hook names, or custom hook
+boundaries — those require the Path B technique above and a real
+consumer-driven design (likely Phase 3 Inspector), not a rushed
+heuristic bolted onto the always-on traversal pass. The three real
+limitations found (state/reducer ambiguity, memo/callback ambiguity,
+useContext invisibility) are recorded here rather than silently
+shipped, matching this project's existing standard for Render
+Tracking's own known limitations.
+
+---

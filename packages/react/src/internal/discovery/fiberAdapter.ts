@@ -7,6 +7,12 @@ export interface FiberNode {
   memoizedState: unknown;
 }
 
+export interface HookNode {
+  memoizedState: unknown;
+  queue: unknown;
+  next: HookNode | null;
+}
+
 interface FiberRootContainer {
   current: FiberNode;
 }

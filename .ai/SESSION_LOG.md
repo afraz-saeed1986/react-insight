@@ -987,3 +987,162 @@ Next session:
   PROJECT_CONTEXT.md's Current Focus (a reactive `onChange()` API,
   root-container correlation, Hook/State/Context tracking, or Phase 3
   Inspector groundwork).
+
+---
+
+## Session 18
+
+Completed:
+
+### Structural Hook Tracking
+
+Chosen from the candidates in `PROJECT_CONTEXT.md`'s Current Focus
+over `onChange()`, root-container correlation, and `ComponentRegistry`
+change-event emission/`getByRoot()` (all still without a real current
+consumer), and over starting Phase 3 Inspector groundwork (which needs
+Hook/State data that didn't exist yet).
+
+**Research before implementation.** Initial assumption was that hook
+type/name detection would work like a lighter version of Render
+Tracking's identity resolution (heuristics over `fiber.memoizedState`
+shape). Researching how real React DevTools does this
+(`react-debug-tools`'s `inspectHooksOfFiber`) showed this assumption
+was wrong: DevTools recovers hook _names_ — including custom hook
+boundaries — by re-invoking the component function with an
+instrumented dispatcher that intercepts each hook call, and resolving
+custom hook names via call-stack parsing (which breaks under
+minification, a limitation React's own team has documented). This is
+real per-inspection work, intended to run on-demand only, not on every
+commit — confirmed by the React team's own discussion of the
+performance cost of doing this during profiling
+(`facebook/react#16477`).
+
+**Decision: structural-only tracking (no re-render, no dispatcher),
+not the DevTools technique.** Consistent with this project's existing
+zero-instrumentation, no-wrapper positioning for Render Tracking
+(Session 15). The DevTools-style technique remains a valid future
+addition, scoped as a separate on-demand capability once Inspector
+work has a concrete design — deliberately deferred, not rejected.
+
+**Validated the actual Hook object shape before writing classification
+logic**, via a controlled Playground experiment: a temporary
+`HookInspectorProbe` component exercising `useState`, `useRef`,
+`useMemo`, `useCallback`, `useEffect`, `useLayoutEffect`, logging each
+hook's `memoizedState`/`queue` shape (and, in a follow-up round, the
+Effect object's `tag` field). Findings:
+
+- `useState`/`useReducer` share an identical shape (`queue` present,
+  with a `dispatch`) — not distinguishable from shape alone.
+- `useRef` has a unique shape (`{ current }`, no `queue`).
+- `useMemo`/`useCallback` share an identical shape (`[value, deps]`
+  array, no `queue`) — not distinguishable from shape alone.
+- `useEffect`/`useLayoutEffect` _are_ distinguishable, via a bitmask
+  on the Effect object's `tag` field — confirmed empirically as `9`
+  (`HasEffect | Passive`) and `5` (`HasEffect | Layout`) respectively,
+  matching `react-reconciler`'s internal `ReactHookEffectTags.js`
+  constants. Better resolution than originally expected.
+
+Two small hiccups during the probe itself, both quickly resolved: a
+leftover placeholder line (`ReactDOM.__debug_getFiber?.()`) in the
+probe component that should have been deleted, not left as a
+to-be-replaced stub; and the first version of the debug logger crashed
+with "Converting circular structure to JSON" because `JSON.stringify`
+followed the Effect object's own circular `next` linked list — fixed
+by logging a shallow shape summary instead of a deep dump.
+
+**Implementation.** `inspectHooks(fiber)` walks the hooks linked list
+rooted at `fiber.memoizedState` and returns `HookSummary[]` (`{ index,
+kind }`), `kind` being one of `state | ref | memo-like | effect |
+layout-effect | unknown`. Guards against class components — whose
+`memoizedState` is `this.state`, not a hooks list — via the same
+marker React's own reconciler uses internally
+(`type.prototype.isReactComponent`), a deliberate departure from this
+package's existing `isComponentFiber()`, which intentionally treats
+function and class components alike where the distinction doesn't
+matter (identity/render-detection).
+
+Threaded through the existing pipeline the same way `rendered` was:
+`FiberNode` gained a sibling `HookNode` type (`fiberAdapter.ts`),
+`DiscoveredComponent`/`ComponentSyncInput`/`ComponentNode` each gained
+a `hooks: readonly HookSummary[]` field, `ComponentRegistry.sync()`
+updates it unconditionally (structural, like `displayName`, not
+accumulated like `renderCount`), and the public `ComponentSnapshot`
+exposes it read-only.
+
+**Validated end-to-end in Playground**, not just unit-tested: every
+component's actual hook list matched hand-verified expectations
+(`Counter`/`App` → `[state]`; `Display`/`Greeting` → `[]`;
+`InsightProvider` → `[ref, effect]`, matching `useRootLifecycle`'s
+internal `useRef` + `useEffect`). No bugs found on this pass — the
+Playground experiment confirmed the design ahead of the final
+implementation, rather than disproving it afterward as happened
+repeatedly with the overcounting fix.
+
+**Known limitation found during that same validation, not assumed in
+advance:** `useContext` does not consume a hook slot at all —
+`readContext()` is called directly by React's internals without
+pushing an entry onto the hooks linked list. Confirmed by
+`InsightDebugPanel` (which calls `useInsight()`, itself
+`useContext`-based, plus its own `useState` and `useEffect`) reporting
+only 2 hooks, not 3. Any hook that is purely a thin `useContext`
+wrapper is invisible to `inspectHooks()` entirely, not merely
+unclassified.
+
+Files changed: `fiberAdapter.ts` (new `HookNode` type),
+`hookInspector.ts` (new — `classifyHook()`, `inspectHooks()`),
+`hookInspector.test.ts` (new), `discoveredComponent.ts`,
+`traversal.ts`, `componentMapper.ts`, `component.ts`,
+`componentRegistry.ts`, `types.ts`, `createInsight.ts`. Also extended
+`InsightDebugPanel` in Playground to display each component's hook
+kinds inline.
+
+### Validation
+
+Full Quality Gate (lint, typecheck, build, test) verified and passed,
+including fixture updates in `componentRegistry.test.ts` and
+`componentMapper.test.ts` (missing `hooks` field on existing fixtures
+and one `toEqual` assertion) — the same category of fallout as the
+`memoizedProps`/`memoizedState` addition in Session 17, resolved the
+same way (paste the exact typecheck/test errors, fix one at a time
+rather than guessing fixture contents from memory). Manual end-to-end
+validation in Playground performed as described above.
+
+### Documentation
+
+Updated:
+
+- DECISIONS.md (new entry: research findings, path decision, shape
+  validation experiment, implementation, and the `useContext`
+  limitation)
+- ROADMAP.md (Hook tracking moved from unchecked to a checked
+  structural-tracking entry, distinct from full hook value/name
+  resolution)
+- PROJECT_CONTEXT.md (Completed/Not Started/Current Focus/Current
+  Architecture Notes/Next Milestone all updated)
+- REACT_ARCHITECTURE.md (new "Hook Tracking (structural)" subsection
+  under Component Discovery; folder structure, module responsibilities,
+  testing strategy, design rules all updated)
+- REACT_RUNTIME_ARCHITECTURE.md (new "Hook Inspector" layer added to
+  Section 6, on equal footing with Hook Adapter/Fiber
+  Adapter/Traversal/Mapper/Registry; Runtime Pipeline note, Stateless
+  Processing note, Cross-Layer Data Rules table, and Deferred Concerns
+  all updated)
+
+Current status:
+
+- Component Discovery, Render Tracking, and structural Hook Tracking
+  are all implemented, unit-tested, and validated end-to-end against a
+  real React application.
+- Hook Tracking's real limitations (state/reducer ambiguity,
+  memo/callback ambiguity, `useContext` invisibility, no values or
+  names) are documented rather than silently shipped, matching the
+  project's existing standard for Render Tracking.
+- All `.ai` documentation is synchronized with the implementation as
+  of this session.
+
+Next session:
+
+- Choose the next area of work from the remaining candidates in
+  PROJECT_CONTEXT.md's Current Focus (a reactive `onChange()` API,
+  root-container correlation, on-demand hook value/name resolution,
+  State/Context tracking, or Phase 3 Inspector groundwork).

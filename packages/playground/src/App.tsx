@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInsight } from "@react-insight/react";
 
 function Display({ count }: { count: number }) {
@@ -36,12 +36,16 @@ function InsightDebugPanel() {
         {insight.getComponents().map((c) => (
           <li key={c.id}>
             {c.displayName} — status: {c.status}, renders: {c.renderCount}
+            {c.hooks.length > 0 && (
+              <span> — hooks: [{c.hooks.map((h) => h.kind).join(", ")}]</span>
+            )}
           </li>
         ))}
       </ul>
     </div>
   );
 }
+
 
 
 export function App() {

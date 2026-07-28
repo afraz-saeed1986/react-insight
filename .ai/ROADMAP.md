@@ -117,8 +117,8 @@ None currently for Render Tracking.
 - [ ] Root-container correlation (multi-application page support)
 - [ ] ComponentRegistry change-event emission
 - [ ] ComponentRegistry `getByRoot()` query
+- [x] Structural Hook Tracking — `inspectHooks()` classifies each hook by shape (`state`/`ref`/`memo-like`/`effect`/`layout-effect`/`unknown`) on every commit, no re-render; exposed as `ComponentSnapshot.hooks`. Does not resolve hook values, names, or custom hook boundaries — see `DECISIONS.md`, 2026-07-27, for the deliberately deferred on-demand technique (`react-debug-tools`-style) that would.
 - [ ] State tracking
-- [ ] Hook tracking
 - [ ] Context tracking
 
 ---

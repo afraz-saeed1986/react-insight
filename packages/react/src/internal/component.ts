@@ -1,3 +1,5 @@
+import type { HookSummary } from "./discovery/hookInspector";
+
 export type ComponentId = string;
 
 export type ComponentStatus = "mounted" | "unmounted";
@@ -50,4 +52,13 @@ export interface ComponentNode {
    * Timestamp of the most recent render.
    */
   lastRenderedAt: number | null;
+
+  /**
+   * Structural summary of this component's hooks (count, order,
+   * best-effort kind classification). Updated unconditionally on
+   * every sync(), like displayName — not gated on `rendered`, since
+   * hook structure (order/count) is a static fact about the fiber's
+   * current state, not a history/accumulation like renderCount.
+   */
+  hooks: readonly HookSummary[];
 }

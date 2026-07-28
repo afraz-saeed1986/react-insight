@@ -9,7 +9,9 @@ export type ComponentSyncInput = Pick<
    * Only affects renderCount / lastRenderedAt, never structural fields.
    */
   readonly rendered: boolean;
-};
+} & Pick<ComponentNode, "hooks">;
+
+
 
 export class ComponentRegistry {
   private readonly components = new Map<ComponentId, ComponentNode>();
@@ -33,12 +35,13 @@ sync(input: ComponentSyncInput): void {
     const { rendered, ...structural } = input;
     const existing = this.components.get(input.id);
 
-    if (existing) {
+if (existing) {
       this.components.set(input.id, {
         ...existing,
         rootId: structural.rootId,
         displayName: structural.displayName,
         parentId: structural.parentId,
+        hooks: structural.hooks,
         renderCount: rendered ? existing.renderCount + 1 : existing.renderCount,
         lastRenderedAt: rendered ? Date.now() : existing.lastRenderedAt,
       });

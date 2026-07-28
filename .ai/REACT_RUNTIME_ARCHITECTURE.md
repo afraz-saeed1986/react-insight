@@ -2,7 +2,7 @@
 
 > Status: Draft
 >
-> Last Updated: 2026-07-26
+> Last Updated: 2026-07-27
 >
 > This document defines the long-term architecture of the React runtime package. It serves as the primary architectural reference for all React-specific runtime features, including component discovery, tracking, inspection, and future DevTools integration.
 
@@ -318,24 +318,31 @@ The pipeline is intentionally linear to simplify reasoning, testing, and future 
                        Timeline / Inspector
 ```
 
-**Note on Render Tracking (2026-07-21):** the diagram above still
-depicts Render Tracking as a distinct downstream consumer of the
-Registry, as originally envisioned. The implementation shipped so far
-diverges from this slightly: root-level commit counting lives on
-`RootRegistry` (a sibling of `ComponentRegistry`, not downstream of
-it), and per-component render detection is resolved inside Traversal
-itself (as a `rendered: boolean` fact about each discovered component,
-computed via a `memoizedProps`/`memoizedState` comparison layered on
-top of the same per-Fiber identity resolution already needed for
-stable ids — see Section 6, Traversal) and merely stored by the
-Registry via `sync()`, rather than being computed by a separate
-downstream "Render Tracking" layer that reads the Registry. This was a
-pragmatic choice: the necessary signal was already available at the
-Traversal layer at no extra cost, and introducing a separate
-consumer layer for it would have been exactly the kind of premature
-abstraction Principle 5 prohibits. Hook Tracking / Context Tracking,
-if and when built, may or may not follow the same pattern — that
-decision is deferred until they have a concrete design.
+**Note on Render Tracking and structural Hook Tracking (2026-07-21,
+updated 2026-07-27):** the diagram above still depicts Render Tracking
+and Hook Tracking as distinct downstream consumers of the Registry, as
+originally envisioned. The implementation shipped so far diverges from
+this for both: root-level commit counting lives on `RootRegistry` (a
+sibling of `ComponentRegistry`, not downstream of it); per-component
+render detection is resolved inside Traversal itself (as a `rendered:
+boolean` fact about each discovered component, computed via a
+`memoizedProps`/`memoizedState` comparison layered on top of the same
+per-Fiber identity resolution already needed for stable ids — see
+Section 6, Traversal); and structural hook classification is likewise
+resolved inside Traversal, by a dedicated Hook Inspector sub-layer, as
+a `hooks: HookSummary[]` fact about each discovered component (see
+Section 6, Hook Inspector) — rather than either being computed by a
+separate downstream "Tracking" layer that reads the Registry after the
+fact. Both were merely stored by the Registry via `sync()`. This was a
+pragmatic choice in both cases: the necessary signal was already
+available at the Traversal layer at no extra cost, and introducing a
+separate consumer layer for either would have been exactly the kind of
+premature abstraction Principle 5 prohibits. Context Tracking, if and
+when built, may or may not follow the same pattern — that decision is
+deferred until it has a concrete design. Note that this pattern only
+applies to _structural_ Hook Tracking; on-demand hook value/name
+resolution (deferred, see Section 6, Hook Inspector) would be a
+genuinely different, non-Traversal, on-demand mechanism if built.
 
 ---
 
@@ -392,7 +399,11 @@ independent of Fiber object identity, see `DECISIONS.md`, 2026-07-26)
 are a deliberate, narrow exception to full statelessness — they
 require memory of previously-seen Fiber _objects_ (for id assignment)
 and previously-observed prop/state values (for `rendered` detection)
-to resolve identity and change across commits. This is still
+to resolve identity and change across commits. Hook Inspector, by
+contrast, is fully stateless: `classifyHook()` and `inspectHooks()`
+derive their result entirely from the current commit's Fiber, with no
+memory of prior commits (there is nothing to "detect a change" for —
+hook structure is classified fresh every time). This is still
 considered "stateless" in the
 architectural sense used here: it holds no _domain_ state (no
 `ComponentNode`, no lifecycle status), only an implementation detail
@@ -405,15 +416,16 @@ output on every call.
 
 Each layer owns exactly one concern.
 
-| Layer         | Responsibility                        |
-| ------------- | ------------------------------------- |
-| Hook Adapter  | Receive React runtime notifications   |
-| Fiber Adapter | Expose React runtime entry points     |
-| Traversal     | Walk Fiber structures                 |
-| Mapper        | Translate Fiber into Component models |
-| Registry      | Own Component graph                   |
-| Tracking      | Observe runtime evolution             |
-| Inspector     | Present information                   |
+| Layer          | Responsibility                            |
+| -------------- | ----------------------------------------- |
+| Hook Adapter   | Receive React runtime notifications       |
+| Fiber Adapter  | Expose React runtime entry points         |
+| Traversal      | Walk Fiber structures                     |
+| Hook Inspector | Classify a component's hooks structurally |
+| Mapper         | Translate Fiber into Component models     |
+| Registry       | Own Component graph                       |
+| Tracking       | Observe runtime evolution                 |
+| Inspector      | Present information                       |
 
 ---
 
@@ -520,6 +532,7 @@ React Runtime
 Hook Adapter
 Fiber Adapter
 Traversal
+Hook Inspector
 
 ──────────────────────────────────────────────
 
@@ -626,8 +639,15 @@ FiberNode | null` reference, required by Traversal for stable-id
 resolution, and `memoizedProps: unknown` / `memoizedState: unknown`
 fields, required by Traversal for `rendered` detection (see Traversal
 below — these two concerns are resolved independently of each other
-as of `DECISIONS.md`, 2026-07-26). Fiber Adapter remains the only
-module allowed to know this shape exists.
+as of `DECISIONS.md`, 2026-07-26). This layer also owns a second,
+related raw shape: `HookNode` (`memoizedState: unknown`, `queue:
+unknown`, `next: HookNode | null`), describing a single node of a
+function component's hooks linked list — the entry point for that
+list is `FiberNode.memoizedState` itself, reinterpreted as a
+`HookNode | null` only by Hook Inspector (see below), and only after
+confirming the Fiber is not a class component (whose `memoizedState`
+means something entirely different — `this.state`). Fiber Adapter
+remains the only module allowed to know either shape exists.
 
 **Must not know**
 
@@ -701,6 +721,10 @@ affected by any version of this, since it doesn't depend on Fiber
 identity at all. See `DECISIONS.md`, 2026-07-26, for the full
 experiment history.
 
+For each qualifying Fiber, Traversal also delegates to Hook Inspector
+to resolve **`hooks`** (see below), and includes the result unchanged
+in its output.
+
 **Input**
 
 A single Fiber reference (from the Fiber Adapter).
@@ -709,9 +733,10 @@ A single Fiber reference (from the Fiber Adapter).
 
 A list of minimal, extracted records — not raw Fiber references —
 containing only the fields required downstream: an identifier, a
-display name, a parent identifier, and whether this fiber was
-rendered in this commit (`rendered: boolean`, per the resolution
-above).
+display name, a parent identifier, whether this fiber was rendered in
+this commit (`rendered: boolean`, per the resolution above), and a
+structural hook summary (`hooks: HookSummary[]`, per Hook Inspector
+below).
 
 **Must not know**
 
@@ -730,6 +755,106 @@ change in the future without touching traversal logic.
 
 ---
 
+## Hook Inspector
+
+**Responsibility**
+
+For a single component Fiber, walk its hooks linked list
+(`fiber.memoizedState`, reinterpreted as a `HookNode | null`) and
+produce a structural summary of each hook: its position and a
+best-effort `kind` classification, derived purely from the shape of
+each `HookNode` (presence of `queue`, shape of `memoizedState`, and —
+for Effect-shaped hooks — a bitmask on the Effect object's internal
+`tag` field). No user code is invoked and no re-render occurs; this is
+read-only shape inspection of already-committed Fiber state, on every
+commit, for every component — the same always-on, zero-instrumentation
+posture already established for Render Tracking (`DECISIONS.md`,
+2026-07-20).
+
+This layer independently determines whether the Fiber is even eligible
+for hook inspection at all: `isComponentFiber()` (Traversal) treats
+function and class components alike (both are `typeof === "function"`
+in JavaScript, a distinction immaterial to identity/render-detection),
+but a class component's `memoizedState` is `this.state`, not a hooks
+list, and must not be walked as one. Hook Inspector checks
+`type.prototype.isReactComponent` — the same marker React's own
+reconciler uses internally to decide whether to construct a class
+instance — rather than an unstable Fiber `tag` number, and returns an
+empty array for class components.
+
+**Classification limits, confirmed via a controlled Playground
+experiment** (a probe component exercising every common hook type,
+logging each `HookNode`'s actual shape — not assumed from prior
+knowledge of React internals, see `DECISIONS.md`, 2026-07-27):
+
+- `useState` / `useReducer` share an identical shape (`queue` present,
+  with a `dispatch`) and both classify as `"state"`.
+- `useRef` has a unique shape (`{ current }`, no `queue`) and reliably
+  classifies as `"ref"`.
+- `useMemo` / `useCallback` share an identical shape (`[value, deps]`
+  array, no `queue`) and both classify as `"memo-like"`.
+- `useEffect` / `useLayoutEffect` _are_ distinguishable from each
+  other, via the Effect object's `tag` bitmask — confirmed
+  empirically as `9` (`HasEffect | Passive`) for `useEffect` and `5`
+  (`HasEffect | Layout`) for `useLayoutEffect`, matching
+  `react-reconciler`'s internal (unexported)
+  `ReactHookEffectTags.js` constants.
+- `useContext` does not consume a hook slot at all —
+  `mountContext`/`updateContext` call `readContext()` directly without
+  pushing onto the hooks linked list — so it (and any custom hook that
+  is purely a thin `useContext` wrapper) is entirely invisible to Hook
+  Inspector, not merely unclassified.
+- No hook _value_ and no hook or custom-hook _name_ is available from
+  this technique, for any kind. Real React DevTools resolves names by
+  re-invoking the component function with an instrumented dispatcher
+  (`react-debug-tools`'s `inspectHooksOfFiber`) and parsing the call
+  stack for custom hook boundaries — real per-inspection work, which
+  React's own team intends to run on-demand only (e.g. when a
+  component is explicitly selected for inspection), not on every
+  commit for every component. This technique was deliberately not
+  adopted for this always-on layer; it remains a candidate for a
+  separate, on-demand capability once Inspector work has a concrete
+  design. See `DECISIONS.md`, 2026-07-27, and "Deferred Concerns"
+  below.
+
+**Input**
+
+A single component Fiber (from Traversal, already confirmed to be a
+component fiber — Hook Inspector performs its own, separate
+class-vs-function check before walking).
+
+**Output**
+
+`HookSummary[]` — a structural fact per hook (`{ index, kind }`),
+where `kind` is one of `state | ref | memo-like | effect |
+layout-effect | unknown`. Never a raw `HookNode` or Fiber reference.
+
+**Must not know**
+
+- `ComponentNode`, `ComponentRegistry`, or Plugins.
+- Hook _values_ or _names_ — out of scope for this layer entirely, not
+  merely unresolved (see "Classification limits" above).
+- Whether this component is new, updated, or unchanged — that
+  distinction belongs to `rendered`, resolved separately by Traversal,
+  not to Hook Inspector.
+
+**Independence rationale**
+
+Hook Inspector is a distinct concern from `rendered` detection, even
+though both are resolved for the same Fiber during the same Traversal
+pass: `rendered` answers "did this commit change anything for this
+component", a temporal/relative question requiring memory across
+commits (`lastObservedValues`); `hooks` answers "what hooks does this
+component currently have, structurally", a point-in-time question
+requiring no memory at all. Keeping them as separate functions (rather
+than merging hook-shape inspection into `resolveFiberIdentity()`) lets
+each be unit-tested against plain `HookNode`/`FiberNode` fixtures
+independently, and lets Hook Inspector's stricter safety requirement
+(must never misinterpret `this.state` as a hooks list) be verified in
+isolation.
+
+---
+
 ## Mapper
 
 **Responsibility**
@@ -737,27 +862,31 @@ change in the future without touching traversal logic.
 Pure, stateless translation of a single extracted Traversal record
 into the structural shape of a `ComponentNode` (`id`, `rootId`,
 `displayName`, `parentId`), plus a straight pass-through of the
-`rendered` flag Traversal already resolved.
+`rendered` and `hooks` facts Traversal already resolved.
 
 **Input**
 
-One extracted record from Traversal (including `rendered`).
+One extracted record from Traversal (including `rendered` and
+`hooks`).
 
 **Output**
 
 A partial `ComponentNode` containing structural fields plus
-`rendered` (`ComponentSyncInput`).
+`rendered` and `hooks` (`ComponentSyncInput`).
 
 **Must not know**
 
 - Whether this component is new, updated, or being removed.
 - `mountedAt`, `unmountedAt`, `status`, `renderCount`, or
   `lastRenderedAt` — these are lifecycle/history decisions, not
-  structural ones. Passing `rendered` through is not a lifecycle
-  decision: it is an observational fact about this specific commit
-  that Traversal already computed; the Mapper does not derive it, it
-  only relays it unchanged.
+  structural ones. Passing `rendered`/`hooks` through is not a
+  lifecycle decision: both are observational facts about this
+  specific commit that Traversal (and, for `hooks`, Hook Inspector)
+  already computed; the Mapper does not derive either, it only relays
+  them unchanged.
 - `ComponentRegistry` internals or any existing stored state.
+- The internal shape of a `HookNode` — the Mapper only ever sees the
+  already-classified `HookSummary[]`, never a raw hook object.
 
 **Scope rationale**
 
@@ -780,19 +909,22 @@ mount or an update (`sync()`), and mark components as unmounted
 without discarding their history (`markUnmounted()`) on explicit
 unmount notifications from the Hook Adapter → Fiber Adapter →
 Traversal path. Own `mountedAt`, `unmountedAt`, `status`,
-`renderCount`, and `lastRenderedAt`.
+`renderCount`, `lastRenderedAt`, and `hooks`.
 
 `sync()` updates structural fields (`rootId`, `displayName`,
-`parentId`) unconditionally on every call, and increments
+`parentId`, `hooks`) unconditionally on every call, and increments
 `renderCount` / updates `lastRenderedAt` only when the incoming
-`rendered` flag is `true`. Updating `rootId` unconditionally is what
-allows the discovery pipeline to tag components with a temporary
-`"pending"` `rootId` before any root is registered (see the React
-package's `componentDiscoveryPlugin`, which is registered eagerly and
-can therefore observe commits before root registration completes) —
-the next real commit self-heals `rootId` to the actual value at no
-extra cost, with no reconciliation logic needed in the Registry
-itself. See `DECISIONS.md`, 2026-07-21.
+`rendered` flag is `true`. `hooks` is treated as structural, like
+`displayName` — not gated on `rendered` — since hook structure (count,
+order, kind) is a static fact about the fiber's current state, not an
+accumulated history like `renderCount`. Updating `rootId`
+unconditionally is what allows the discovery pipeline to tag
+components with a temporary `"pending"` `rootId` before any root is
+registered (see the React package's `componentDiscoveryPlugin`, which
+is registered eagerly and can therefore observe commits before root
+registration completes) — the next real commit self-heals `rootId` to
+the actual value at no extra cost, with no reconciliation logic needed
+in the Registry itself. See `DECISIONS.md`, 2026-07-21.
 
 **Input**
 
@@ -806,7 +938,7 @@ A query API for consumers: `get(id)`, `has(id)`, `values()`, `size`.
 
 **Must not know**
 
-- Fiber, Traversal, or how discovery happened.
+- Fiber, Traversal, Hook Inspector, or how discovery happened.
 - Anything about eager vs. effect-based plugin registration timing —
   the Registry's unconditional `rootId` update on `sync()` happens to
   make it tolerant of that timing, but the Registry itself has no
@@ -826,17 +958,19 @@ intended, respectively — the discovery pipeline itself only ever uses
 
 ## Cross-Layer Data Rules
 
-| Boundary                     | Model that crosses it                                                                     | Allowed below this boundary?                              |
-| ---------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| React → Hook Adapter         | Raw React callback arguments                                                              | No — never leaves Hook Adapter                            |
-| Hook Adapter → Fiber Adapter | Internal runtime event (raw Fiber/FiberRoot ref)                                          | No — never leaves Fiber Adapter                           |
-| Fiber Adapter → Traversal    | Single Fiber entry point (including `alternate`, `memoizedProps`, `memoizedState`)        | No — never leaves Traversal                               |
-| Traversal → Mapper           | `DiscoveredComponent` (id, displayName, parentId, rootId, `rendered`; no Fiber reference) | No — internal contract only between Traversal and Mapper  |
-| Mapper → Registry → Plugins  | `ComponentSyncInput` / `ComponentNode`                                                    | Yes — the only models allowed to travel the full pipeline |
+| Boundary                     | Model that crosses it                                                                                      | Allowed below this boundary?                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| React → Hook Adapter         | Raw React callback arguments                                                                               | No — never leaves Hook Adapter                            |
+| Hook Adapter → Fiber Adapter | Internal runtime event (raw Fiber/FiberRoot ref)                                                           | No — never leaves Fiber Adapter                           |
+| Fiber Adapter → Traversal    | Single Fiber entry point (including `alternate`, `memoizedProps`, `memoizedState`)                         | No — never leaves Traversal                               |
+| Traversal → Hook Inspector   | A single component Fiber, reinterpreted as a `HookNode`-list entry point (`memoizedState`)                 | No — never leaves Hook Inspector                          |
+| Hook Inspector → Traversal   | `HookSummary[]` (`{ index, kind }`; no `HookNode` or Fiber reference)                                      | Yes — passed through to Mapper unchanged                  |
+| Traversal → Mapper           | `DiscoveredComponent` (id, displayName, parentId, rootId, `rendered`, `hooks`; no Fiber or `HookNode` ref) | No — internal contract only between Traversal and Mapper  |
+| Mapper → Registry → Plugins  | `ComponentSyncInput` / `ComponentNode`                                                                     | Yes — the only models allowed to travel the full pipeline |
 
-No type whose name or shape depends on React Fiber may cross the
-Mapper boundary. This is the same boundary already defined in
-"Architectural Boundary" above.
+No type whose name or shape depends on React Fiber (including
+`HookNode`) may cross the Mapper boundary. This is the same boundary
+already defined in "Architectural Boundary" above.
 
 ---
 
@@ -855,6 +989,11 @@ tracked in `DECISIONS.md`:
 - `ComponentRegistry.getByRoot()` — no current consumer; discovery
   currently assumes a single root (see `DECISIONS.md`, 2026-07-18 —
   single React application per page).
+- On-demand hook value/name resolution (custom hook boundaries) — a
+  genuinely different, re-render-based mechanism from structural Hook
+  Inspector above; deliberately not built into the always-on
+  Traversal pass; a candidate for Phase 3 Inspector work once it has a
+  concrete design. See `DECISIONS.md`, 2026-07-27.
 
 Per-component render detection for ancestors/siblings cloned along a
 reconciliation path without themselves re-rendering is no longer a
