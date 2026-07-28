@@ -1146,3 +1146,126 @@ Next session:
   PROJECT_CONTEXT.md's Current Focus (a reactive `onChange()` API,
   root-container correlation, on-demand hook value/name resolution,
   State/Context tracking, or Phase 3 Inspector groundwork).
+
+---
+
+## Session 19
+
+Completed:
+
+### State Hook Value Preview
+
+Chosen from the remaining Current Focus candidates over `onChange()`,
+root-container correlation, and on-demand hook _name_ resolution (the
+latter explicitly scoped to Phase 3 Inspector in Session 18) because
+it closes a specific, narrow slice of the "no hook values" limitation
+documented in Session 18: unlike hook _names_, a `state`-kind hook's
+current _value_ is directly readable from `hook.memoizedState` with no
+re-render and no instrumented dispatcher — the deferred DevTools
+technique simply doesn't apply to this case.
+
+**Design constraint:** hook values can be arbitrary JS values —
+objects, arrays, functions, DOM refs, self-referential structures —
+so serialization needed to be safe (no crash on circular references,
+no invoking functions) and bounded (no unbounded cost on large
+structures).
+
+**Design chosen:** a shallow (one level deep) preview
+(`previewHookValue()`, new `hookValuePreview.ts`). Primitives pass
+through unchanged; a plain object/array is walked exactly one level,
+with anything nested (object/array/function/class instance) replaced
+by a `{ __type: string }` descriptor instead of recursed into.
+Circular-reference safety falls out of the design itself — there is no
+code path that ever revisits a node past depth 1 — rather than
+requiring an explicit `seen`-set guard. Capped at 20 entries per
+object/array.
+
+**Bug found by unit tests before Playground:** the top-level branch of
+`previewHookValue()` didn't apply the same class-instance check
+`previewLeaf()` used one level down, so a class instance passed
+directly as hook state incorrectly expanded into its own keys instead
+of being described by constructor name. Fixed by reusing the same
+`describeType()` check at the top level. Caught by
+`hookValuePreview.test.ts` before ever reaching Playground.
+
+**Validated end-to-end in Playground**, per the project's standing
+rule for any Component Discovery change: a temporary `StateShapeProbe`
+component (object and array state) alongside `Counter` (primitive
+state) confirmed correct, live-updating previews for all three shapes.
+`InsightDebugPanel` was permanently extended to render `hooks[].value`
+inline; `StateShapeProbe` was removed after validation, having served
+its purpose as a temporary fixture — the same disposable-probe pattern
+used in Session 18 for the original hook-shape experiment.
+
+Files changed: `hookValuePreview.ts` (new), `hookValuePreview.test.ts`
+(new), `hookInspector.ts` (`HookSummary` gained an optional `value`,
+populated only for `kind: "state"`), `hookInspector.test.ts` (fixture
+updates + one new test), `types.ts` (`ComponentSnapshot.hooks[]`
+element gained the same optional `value`, inlined like `HookKind`
+already was — no current external consumer for a standalone type).
+
+### Documentation Consistency Check
+
+Before closing this session, explicitly checked all `.ai` docs (not
+just the ones directly touched) for claims that would now be stale —
+this caught two real, meaningfully wrong statements that a narrower
+"update what I touched" pass would have missed:
+
+- `REACT_ARCHITECTURE.md` still asserted "no hook values... at any
+  hook kind" — literally false as of this session for `state`-kind
+  hooks. Corrected.
+- `REACT_RUNTIME_ARCHITECTURE.md`'s Hook Inspector contract still
+  listed "Hook values or names" together as entirely out of scope for
+  the layer — no longer accurate; values are now partially in scope
+  (`state`-kind only). Corrected, along with the Cross-Layer Data
+  Rules table row, the Runtime Pipeline note, and Deferred Concerns,
+  all of which previously lumped "hook value/name resolution" together
+  as a single deferred item.
+
+### Validation
+
+Full Quality Gate (lint, typecheck, build, test) verified and passed,
+including one intermediate typecheck failure (an unsafe union-to-object
+cast in a test file, fixed by routing through `unknown` first) and one
+intermediate test failure (the class-instance bug above) — both
+resolved before Playground validation, matching the project's standing
+"fix one error at a time from the actual message, don't guess" pattern.
+
+### Documentation
+
+Updated:
+
+- DECISIONS.md (new entry: scope decision, design constraint, the
+  class-instance bug, and Playground validation)
+- ROADMAP.md (Structural Hook Tracking entry updated to mention value
+  preview)
+- PROJECT_CONTEXT.md (Completed/Current Focus/Known Limitations/
+  Architecture Notes all updated)
+- REACT_ARCHITECTURE.md (Hook Tracking known-limitations list and the
+  zero-instrumentation Design Rule corrected; folder structure, module
+  responsibilities, and Testing Strategy updated for `hookValuePreview.ts`)
+- REACT_RUNTIME_ARCHITECTURE.md (Hook Inspector's Classification
+  limits, Output, and Must-not-know all corrected; Cross-Layer Data
+  Rules table, Runtime Pipeline note, and Deferred Concerns updated;
+  Last Updated date bumped)
+- ARCHITECTURE.md checked and confirmed to need no changes — its
+  existing "structural hook summary" wording never claimed values were
+  absent, so nothing there was actually stale.
+
+Current status:
+
+- `state`-kind hook values are now visible via `ComponentSnapshot`,
+  validated both by unit test (including the circular-reference and
+  class-instance edge cases) and against a real, live-updating React
+  tree in Playground.
+- `.ai` documentation was checked project-wide for staleness this
+  session, not just in the files directly touched by the new feature —
+  two real inaccuracies were found and fixed as a result.
+
+Next session:
+
+- Choose the next area of work from the remaining candidates in
+  PROJECT*CONTEXT.md's Current Focus (a reactive `onChange()` API,
+  root-container correlation, on-demand hook \_name* resolution,
+  extending value preview to `ref`/`memo-like` hooks, Context
+  tracking, or Phase 3 Inspector groundwork).

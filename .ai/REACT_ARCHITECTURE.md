@@ -296,7 +296,7 @@ Because `isComponentFiber()` elsewhere in this package intentionally treats func
 - `useMemo` and `useCallback` share an identical shape and both report `kind: "memo-like"`.
 - `useEffect` and `useLayoutEffect` _are_ distinguishable, via a bitmask on the Effect object's `tag` field (confirmed empirically: `9` = `useEffect`, `5` = `useLayoutEffect`).
 - `useContext` (and any custom hook that is purely a `useContext` wrapper) is entirely invisible to `inspectHooks()` — `readContext()` does not consume a hook slot at all, so no entry appears in the hooks list.
-- No hook values, and no hook or custom-hook _names_, are available from this technique at any hook kind — see above.
+- No hook or custom-hook _name_ is available from this technique, for any kind — see above. As of `DECISIONS.md`, 2026-07-28, `state`-kind hooks (`useState`/`useReducer`) do carry a shallow, circular-safe _value_ preview (`previewHookValue()`, one level deep — nested objects/arrays/functions/class instances are described by type, not walked further), read directly from `memoizedState` with no re-render, since values (unlike names) require no instrumented dispatcher for this kind. `ref`/`memo-like` hooks still carry no value in this slice.
 
 Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18):
 
@@ -438,6 +438,8 @@ packages/react
 │       │   ├── hookAdapter.test.ts
 │       │   ├── hookInspector.ts
 │       │   ├── hookInspector.test.ts
+│       │   ├── hookValuePreview.ts
+│       │   ├── hookValuePreview.test.ts
 │       │   ├── componentMapper.ts
 │       │   ├── componentMapper.test.ts
 │       │   ├── traversal.ts
@@ -549,7 +551,11 @@ Walks a Fiber tree from the entry point, filtering to function/class component f
 
 ### hookInspector.ts
 
-Walks a function component Fiber's hooks linked list (`fiber.memoizedState`) and classifies each hook by structural shape alone (`classifyHook()`), producing `HookSummary[]` (`inspectHooks()`). Guards against class components via `type.prototype.isReactComponent`. Never re-renders or invokes user code. See "Hook Tracking (structural)" above for the full design rationale and known limitations.
+Walks a function component Fiber's hooks linked list (`fiber.memoizedState`) and classifies each hook by structural shape alone (`classifyHook()`), producing `HookSummary[]` (`inspectHooks()`). Guards against class components via `type.prototype.isReactComponent`. For hooks classified as `kind: "state"`, delegates to `hookValuePreview.ts` to attach a `value` preview; other kinds carry no `value`. Never re-renders or invokes user code. See "Hook Tracking (structural)" above for the full design rationale and known limitations.
+
+### hookValuePreview.ts
+
+Pure, side-effect-free translation from an arbitrary JS value (a hook's `memoizedState`) to a shallow, circular-safe preview (`previewHookValue()`): primitives pass through unchanged; a plain object or array is walked exactly one level, with any nested object/array/function/class-instance/etc. replaced by a `{ __type: string }` descriptor rather than recursed into. Capped at 20 entries per object/array. Circular-reference safety is a structural property of never recursing past depth 1, not an explicit `seen`-set guard. Never invokes functions found in the value. See `DECISIONS.md`, 2026-07-28.
 
 ### componentMapper.ts
 
@@ -657,7 +663,7 @@ Current exports:
 - `Insight`
 - `ComponentSnapshot`
 
-Internal modules must never be re-exported, except `installReactDevtoolsHook` (documented exception — see "Internal Architecture" above). `HookKind`/`HookSummary` are not exported separately; they are inlined into `ComponentSnapshot.hooks`' element type, since there is no current consumer needing them as standalone named types.
+Internal modules must never be re-exported, except `installReactDevtoolsHook` (documented exception — see "Internal Architecture" above). `HookKind`/`HookSummary`/`HookValuePreview` are not exported separately; they are inlined into `ComponentSnapshot.hooks`' element type, since there is no current consumer needing them as standalone named types.
 
 ---
 
@@ -680,7 +686,8 @@ Current test coverage includes:
 - Public API encapsulation
 - Fiber Adapter (`getFiberTraversalEntry`)
 - Traversal (filtering, parent resolution, stable ids via `current`/`alternate` identity, and `rendered` detection via last-observed props/state comparison — including cloned-but-bailed-out ancestors, recycled direct-hit fibers, and repeated unrelated commits after a component's last real update)
-- Hook Inspector (`classifyHook()` per hook shape — state, ref, memo-like, effect, layout-effect, unknown; hook order preservation across a multi-hook chain; class components returning an empty array instead of misreading `this.state`)
+- Hook Inspector (`classifyHook()` per hook shape — state, ref, memo-like, effect, layout-effect, unknown; hook order preservation across a multi-hook chain; class components returning an empty array instead of misreading `this.state`; `value` present only for `state`-kind hooks)
+- Hook Value Preview (`previewHookValue()` — primitives, shallow object/array preview, nested structures described by type not recursed, functions described without invocation, class instances described by constructor name, self-referential/circular values handled without throwing, large arrays/objects capped)
 - Component Mapper (structural translation, including `rendered` and `hooks`)
 - Hook Adapter (`installReactDevtoolsHook()` idempotency and stub shape including `inject()`, `connectHookAdapter()` installation, chaining, error isolation, disconnect)
 
@@ -706,6 +713,6 @@ Every public API should have automated tests before new features are introduced.
 - `ComponentRegistry` is the sole owner of component lifecycle state; upstream discovery layers (Traversal, Mapper, Hook Inspector) remain stateless.
 - Unmount preserves component history (`markUnmounted()`) rather than discarding it; `unregister()` remains available for hard removal where that is genuinely intended.
 - No field or method is added to a domain model without a real, current consumer (`ComponentNode.children` was removed for violating this).
-- Runtime observation stays zero-instrumentation and always-on (no `<Profiler>`, no re-render, no wrapped user code) for both Render Tracking and structural Hook Tracking; techniques requiring re-invoking user code (e.g. hook value/name resolution) are deliberately scoped as a separate, on-demand capability rather than folded into the always-on traversal pass.
+- Runtime observation stays zero-instrumentation and always-on (no `<Profiler>`, no re-render, no wrapped user code) for Render Tracking and structural Hook Tracking, including `state`-kind hook value previews (safely readable from already-committed Fiber state, no re-invocation needed); techniques that do require re-invoking user code (hook/custom-hook _name_ resolution) are deliberately scoped as a separate, on-demand capability rather than folded into the always-on traversal pass.
 - Public API remains minimal and stable.
 - Internal implementation may evolve without breaking consumers.

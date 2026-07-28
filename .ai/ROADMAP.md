@@ -117,7 +117,8 @@ None currently for Render Tracking.
 - [ ] Root-container correlation (multi-application page support)
 - [ ] ComponentRegistry change-event emission
 - [ ] ComponentRegistry `getByRoot()` query
-- [x] Structural Hook Tracking — `inspectHooks()` classifies each hook by shape (`state`/`ref`/`memo-like`/`effect`/`layout-effect`/`unknown`) on every commit, no re-render; exposed as `ComponentSnapshot.hooks`. Does not resolve hook values, names, or custom hook boundaries — see `DECISIONS.md`, 2026-07-27, for the deliberately deferred on-demand technique (`react-debug-tools`-style) that would.
+- [x] Structural Hook Tracking — `inspectHooks()` classifies each hook by shape (`state`/`ref`/`memo-like`/`effect`/`layout-effect`/`unknown`) on every commit, no re-render; exposed as `ComponentSnapshot.hooks`. Does not resolve hook names or custom hook boundaries — see `DECISIONS.md`, 2026-07-27, for the deliberately deferred on-demand technique (`react-debug-tools`-style) that would.
+- [x] State hook value preview — `state`-kind hooks (`useState`/`useReducer`) carry a shallow, circular-safe `value` preview (`previewHookValue()`), read directly from `memoizedState` with no re-render since values (unlike names) don't require the deferred DevTools technique. Scoped to `state`-kind only for this slice. See `DECISIONS.md`, 2026-07-28.
 - [ ] State tracking
 - [ ] Context tracking
 

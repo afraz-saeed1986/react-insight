@@ -22,7 +22,7 @@ export interface ComponentSnapshot {
    * hookInspector.ts for what this can and cannot distinguish, e.g.
    * useState/useReducer and useMemo/useCallback share a kind).
    */
-  readonly hooks: ReadonlyArray<{
+readonly hooks: ReadonlyArray<{
     readonly index: number;
     readonly kind:
       | "state"
@@ -31,6 +31,15 @@ export interface ComponentSnapshot {
       | "effect"
       | "layout-effect"
       | "unknown";
+    readonly value?:
+      | string
+      | number
+      | boolean
+      | null
+      | undefined
+      | { readonly __type: string }
+      | { readonly __type: "array"; readonly length: number; readonly items: readonly unknown[] }
+      | { readonly __type: "object"; readonly keys: Readonly<Record<string, unknown>> };
   }>;
 }
 

@@ -2,7 +2,7 @@
 
 > Status: Draft
 >
-> Last Updated: 2026-07-27
+> Last Updated: 2026-07-28
 >
 > This document defines the long-term architecture of the React runtime package. It serves as the primary architectural reference for all React-specific runtime features, including component discovery, tracking, inspection, and future DevTools integration.
 
@@ -340,7 +340,9 @@ separate consumer layer for either would have been exactly the kind of
 premature abstraction Principle 5 prohibits. Context Tracking, if and
 when built, may or may not follow the same pattern — that decision is
 deferred until it has a concrete design. Note that this pattern only
-applies to _structural_ Hook Tracking; on-demand hook value/name
+applies to _structural_ Hook Tracking (including `state`-kind value
+previews, which stayed cheap enough to fold into the same always-on
+pass — see `DECISIONS.md`, 2026-07-28); on-demand hook _name_
 resolution (deferred, see Section 6, Hook Inspector) would be a
 genuinely different, non-Traversal, on-demand mechanism if built.
 
@@ -804,9 +806,9 @@ knowledge of React internals, see `DECISIONS.md`, 2026-07-27):
   pushing onto the hooks linked list — so it (and any custom hook that
   is purely a thin `useContext` wrapper) is entirely invisible to Hook
   Inspector, not merely unclassified.
-- No hook _value_ and no hook or custom-hook _name_ is available from
-  this technique, for any kind. Real React DevTools resolves names by
-  re-invoking the component function with an instrumented dispatcher
+- No hook or custom-hook _name_ is available from this technique, for
+  any kind. Real React DevTools resolves names by re-invoking the
+  component function with an instrumented dispatcher
   (`react-debug-tools`'s `inspectHooksOfFiber`) and parsing the call
   stack for custom hook boundaries — real per-inspection work, which
   React's own team intends to run on-demand only (e.g. when a
@@ -816,6 +818,15 @@ knowledge of React internals, see `DECISIONS.md`, 2026-07-27):
   separate, on-demand capability once Inspector work has a concrete
   design. See `DECISIONS.md`, 2026-07-27, and "Deferred Concerns"
   below.
+- `state`-kind hooks (`useState`/`useReducer`) _do_ carry a `value`, as
+  of `DECISIONS.md`, 2026-07-28: unlike names, a hook's current value
+  is already sitting in already-committed Fiber state
+  (`hook.memoizedState`) and needs no re-invocation to read — the
+  on-demand technique above simply doesn't apply to values the way it
+  does to names. `hookValuePreview.ts`'s `previewHookValue()` produces
+  a shallow (one-level), circular-safe preview of it. `ref`/`memo-like`
+  hooks carry no `value` in this slice — technically just as readable,
+  but with no current driving need.
 
 **Input**
 
@@ -825,15 +836,20 @@ class-vs-function check before walking).
 
 **Output**
 
-`HookSummary[]` — a structural fact per hook (`{ index, kind }`),
-where `kind` is one of `state | ref | memo-like | effect |
-layout-effect | unknown`. Never a raw `HookNode` or Fiber reference.
+`HookSummary[]` — a structural fact per hook (`{ index, kind, value?
+}`), where `kind` is one of `state | ref | memo-like | effect |
+layout-effect | unknown`, and `value` (a shallow `HookValuePreview`,
+see `hookValuePreview.ts`) is present only when `kind === "state"`.
+Never a raw `HookNode` or Fiber reference.
 
 **Must not know**
 
 - `ComponentNode`, `ComponentRegistry`, or Plugins.
-- Hook _values_ or _names_ — out of scope for this layer entirely, not
-  merely unresolved (see "Classification limits" above).
+- Hook or custom-hook _names_ — out of scope for this layer entirely,
+  not merely unresolved (see "Classification limits" above). Hook
+  _values_ are only partially out of scope: in scope for `state`-kind
+  (via `hookValuePreview.ts`), out of scope for every other kind in
+  this slice.
 - Whether this component is new, updated, or unchanged — that
   distinction belongs to `rendered`, resolved separately by Traversal,
   not to Hook Inspector.
@@ -964,7 +980,7 @@ intended, respectively — the discovery pipeline itself only ever uses
 | Hook Adapter → Fiber Adapter | Internal runtime event (raw Fiber/FiberRoot ref)                                                           | No — never leaves Fiber Adapter                           |
 | Fiber Adapter → Traversal    | Single Fiber entry point (including `alternate`, `memoizedProps`, `memoizedState`)                         | No — never leaves Traversal                               |
 | Traversal → Hook Inspector   | A single component Fiber, reinterpreted as a `HookNode`-list entry point (`memoizedState`)                 | No — never leaves Hook Inspector                          |
-| Hook Inspector → Traversal   | `HookSummary[]` (`{ index, kind }`; no `HookNode` or Fiber reference)                                      | Yes — passed through to Mapper unchanged                  |
+| Hook Inspector → Traversal   | `HookSummary[]` (`{ index, kind, value? }`; no `HookNode` or Fiber reference)                              | Yes — passed through to Mapper unchanged                  |
 | Traversal → Mapper           | `DiscoveredComponent` (id, displayName, parentId, rootId, `rendered`, `hooks`; no Fiber or `HookNode` ref) | No — internal contract only between Traversal and Mapper  |
 | Mapper → Registry → Plugins  | `ComponentSyncInput` / `ComponentNode`                                                                     | Yes — the only models allowed to travel the full pipeline |
 
@@ -989,11 +1005,15 @@ tracked in `DECISIONS.md`:
 - `ComponentRegistry.getByRoot()` — no current consumer; discovery
   currently assumes a single root (see `DECISIONS.md`, 2026-07-18 —
   single React application per page).
-- On-demand hook value/name resolution (custom hook boundaries) — a
+- On-demand hook _name_ resolution (custom hook boundaries) — a
   genuinely different, re-render-based mechanism from structural Hook
   Inspector above; deliberately not built into the always-on
   Traversal pass; a candidate for Phase 3 Inspector work once it has a
-  concrete design. See `DECISIONS.md`, 2026-07-27.
+  concrete design. See `DECISIONS.md`, 2026-07-27. Hook _value_
+  resolution for `state`-kind hooks is no longer part of this deferred
+  item — see `DECISIONS.md`, 2026-07-28. Values for `ref`/`memo-like`
+  hooks remain out of scope for this slice, though technically as
+  cheap to add — no current consumer justifies it yet.
 
 Per-component render detection for ancestors/siblings cloned along a
 reconciliation path without themselves re-rendering is no longer a

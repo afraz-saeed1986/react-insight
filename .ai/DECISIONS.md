@@ -1222,3 +1222,77 @@ shipped, matching this project's existing standard for Render
 Tracking's own known limitations.
 
 ---
+
+## 2026-07-28
+
+### Added: state hook value preview (`previewHookValue()`)
+
+Chosen as the next priority over `onChange()` / root-container
+correlation / on-demand hook name resolution (all still deferred, see
+`PROJECT_CONTEXT.md` Current Focus) because it closes a specific,
+narrowly-scoped gap in the "no hook values" limitation documented
+2026-07-27: unlike hook _names_, the _value_ of a `kind: "state"` hook
+(`useState`/`useReducer`) is directly readable from `hook.memoizedState`
+with no re-render, no instrumented dispatcher, and no per-inspection
+cost — the DevTools-style technique deferred for names does not apply
+here at all. Deliberately scoped to `state`-kind hooks only for this
+slice; `ref`/`memo-like` values could be added later the same way, but
+without a current driving need.
+
+**Design constraint:** hook values can be arbitrary JS values —
+objects, arrays, functions, DOM refs, or self-referential structures —
+so serialization needed to be both safe (no crash on circular
+references, no invoking functions) and bounded (no unbounded cost on
+large structures), consistent with this project's zero-instrumentation
+posture.
+
+**Design chosen:** shallow (one level deep) preview.
+`previewHookValue()` returns primitives as-is; for a plain object or
+array, walks exactly one level and replaces any nested
+object/array/function/class-instance/etc. with a `{ __type: string }`
+type descriptor rather than recursing further. This makes circular-
+reference safety a structural property of the design (there is no
+code path that revisits a node, since nothing is ever visited past
+depth 1) rather than something requiring an explicit `seen`-set guard.
+Also capped at 20 entries per object/array to bound output size and
+cost for large structures — a preview, not a full snapshot.
+
+**Bug found and fixed via unit tests before Playground validation:**
+the top-level branch of `previewHookValue()` treated any non-array
+object as a plain object to expand into `keys`, without the same
+class-instance check `previewLeaf()` already applied one level down —
+so a class instance passed directly as hook state (e.g. `new
+Point(1, 2)`) incorrectly expanded to `{ __type: "object", keys: {x,
+y} }` instead of `{ __type: "Point" }`. Fixed by reusing the same
+`describeType()` check at the top level before deciding to expand.
+Caught by `hookValuePreview.test.ts` before ever reaching Playground.
+
+**Validated end-to-end in Playground**, per the project's standing
+rule for any Component Discovery change: a temporary
+`StateShapeProbe` component (object and array state) plus the
+existing `Counter` (primitive state) confirmed correct previews for
+all three shapes, live-updating correctly on real state changes
+(`Counter`'s preview moved `0` → `1` on click). `InsightDebugPanel`
+was permanently extended to render `hooks[].value` inline;
+`StateShapeProbe` itself was removed after validation, having served
+its purpose as a temporary fixture.
+
+Files changed: `hookValuePreview.ts` (new — `previewHookValue()`),
+`hookValuePreview.test.ts` (new), `hookInspector.ts` (`HookSummary`
+gained an optional `value` field, populated only for `kind: "state"`),
+`hookInspector.test.ts` (existing fixtures updated, one new test for
+the value/no-value split), `types.ts` (`ComponentSnapshot.hooks[]`
+element gained the same optional `value` field, inlined rather than
+exported as a standalone type — no current external consumer).
+
+Reason:
+
+Closes the "no hook values" gap for the one hook kind where it was
+cheap and safe to do so (`state`), without reaching for the
+re-render-based technique deliberately deferred for hook _names_ on
+2026-07-27. Keeps this project's standing pattern: validate a
+non-obvious design (shape safety, here) with unit tests first, then
+confirm it holds against a real, live-updating React tree in
+Playground before considering the change complete.
+
+---

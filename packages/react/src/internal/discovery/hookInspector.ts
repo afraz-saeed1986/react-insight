@@ -1,4 +1,5 @@
 import type { FiberNode, HookNode } from "./fiberAdapter";
+import { previewHookValue, type HookValuePreview } from "./hookValuePreview";
 
 export type HookKind =
   | "state" // useState or useReducer — indistinguishable from shape alone
@@ -11,6 +12,8 @@ export type HookKind =
 export interface HookSummary {
   readonly index: number;
   readonly kind: HookKind;
+  /** Only present when kind === "state" (useState/useReducer). */
+  readonly value?: HookValuePreview;
 }
 
 // react-reconciler's internal Effect tag bits (ReactHookEffectTags.js).
@@ -109,8 +112,13 @@ export function inspectHooks(fiber: FiberNode): HookSummary[] {
   let hook = fiber.memoizedState as HookNode | null;
   let index = 0;
 
-  while (hook) {
-    summaries.push({ index, kind: classifyHook(hook) });
+ while (hook) {
+    const kind = classifyHook(hook);
+    summaries.push(
+      kind === "state"
+        ? { index, kind, value: previewHookValue(hook.memoizedState) }
+        : { index, kind },
+    );
     hook = hook.next;
     index += 1;
   }

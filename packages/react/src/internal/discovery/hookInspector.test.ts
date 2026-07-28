@@ -33,7 +33,7 @@ describe("inspectHooks", () => {
     const hook = hookNode(0, { pending: null, dispatch: () => {} });
     const fiber = functionComponentFiber(chain(hook));
 
-    expect(inspectHooks(fiber)).toEqual([{ index: 0, kind: "state" }]);
+    expect(inspectHooks(fiber)).toEqual([{ index: 0, kind: "state", value: 0 }]);
   });
 
   it("classifies a useRef-shaped hook as 'ref'", () => {
@@ -81,12 +81,24 @@ describe("inspectHooks", () => {
     const memoHook = hookNode([1, []]);
     const fiber = functionComponentFiber(chain(stateHook, refHook, memoHook));
 
-    expect(inspectHooks(fiber)).toEqual([
-      { index: 0, kind: "state" },
+  expect(inspectHooks(fiber)).toEqual([
+      { index: 0, kind: "state", value: 0 },
       { index: 1, kind: "ref" },
       { index: 2, kind: "memo-like" },
     ]);
   });
+
+  it("includes a shallow value preview for state hooks, and no value for other kinds", () => {
+    const stateHook = hookNode(42, { dispatch: () => {} });
+    const refHook = hookNode({ current: null });
+    const fiber = functionComponentFiber(chain(stateHook, refHook));
+
+    expect(inspectHooks(fiber)).toEqual([
+      { index: 0, kind: "state", value: 42 },
+      { index: 1, kind: "ref" },
+    ]);
+  });
+
 
   it("returns an empty array for class components instead of walking this.state as hooks", () => {
     class AnyClassComponent {

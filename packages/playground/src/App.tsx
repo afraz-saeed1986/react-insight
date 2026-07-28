@@ -36,14 +36,30 @@ function InsightDebugPanel() {
         {insight.getComponents().map((c) => (
           <li key={c.id}>
             {c.displayName} — status: {c.status}, renders: {c.renderCount}
-            {c.hooks.length > 0 && (
-              <span> — hooks: [{c.hooks.map((h) => h.kind).join(", ")}]</span>
+          {c.hooks.length > 0 && (
+              <span>
+                {" — hooks: ["}
+                {c.hooks
+                  .map((h) =>
+                    h.value !== undefined
+                      ? `${h.kind}=${JSON.stringify(h.value)}`
+                      : h.kind,
+                  )
+                  .join(", ")}
+                {"]"}
+              </span>
             )}
           </li>
         ))}
       </ul>
     </div>
   );
+}
+
+function StateShapeProbe() {
+  const [obj] = useState({ nested: { a: 1 }, label: "hi" });
+  const [arr] = useState([1, 2, 3]);
+  return <p>State shape probe</p>;
 }
 
 
@@ -55,6 +71,7 @@ export function App() {
     <div>
       <h1>React Insight Playground</h1>
       <Counter />
+      <StateShapeProbe />
       <button onClick={() => setShowGreeting((v) => !v)}>
         {showGreeting ? "Unmount" : "Mount"} Greeting
       </button>
