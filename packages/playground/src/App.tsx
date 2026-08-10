@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInsight } from "@react-insight/react";
 
 function Display({ count }: { count: number }) {
@@ -49,6 +49,17 @@ function InsightDebugPanel() {
                 {"]"}
               </span>
             )}
+
+
+            {c.contexts.length > 0 && (
+              <span>
+                {" — contexts: ["}
+                {c.contexts
+                  .map((ctx) => `${ctx.displayName}=${JSON.stringify(ctx.value)}`)
+                  .join(", ")}
+                {"]"}
+              </span>
+            )}
           </li>
         ))}
       </ul>
@@ -56,13 +67,19 @@ function InsightDebugPanel() {
   );
 }
 
-function StateShapeProbe() {
-  const [obj] = useState({ nested: { a: 1 }, label: "hi" });
-  const [arr] = useState([1, 2, 3]);
-  return <p>State shape probe</p>;
+// function StateShapeProbe() {
+//   const [obj] = useState({ nested: { a: 1 }, label: "hi" });
+//   const [arr] = useState([1, 2, 3]);
+//   return <p>State shape probe</p>;
+// }
+
+const ThemeContext = createContext("light");
+ThemeContext.displayName = "ThemeContext";
+
+function ContextProbe() {
+  const theme = useContext(ThemeContext);
+  return <p>Theme: {theme}</p>;
 }
-
-
 
 export function App() {
   const [showGreeting, setShowGreeting] = useState(true);
@@ -71,12 +88,16 @@ export function App() {
     <div>
       <h1>React Insight Playground</h1>
       <Counter />
-      <StateShapeProbe />
+      {/* <StateShapeProbe /> */}
       <button onClick={() => setShowGreeting((v) => !v)}>
         {showGreeting ? "Unmount" : "Mount"} Greeting
       </button>
       {showGreeting && <Greeting />}
       <InsightDebugPanel />
+
+      {/* <ThemeContext.Provider value="dark">
+            <ContextProbe />
+      </ThemeContext.Provider> */}
     </div>
   );
 }

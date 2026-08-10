@@ -1,3 +1,4 @@
+import type { ContextSummary } from "./discovery/contextInspector";
 import type { HookSummary } from "./discovery/hookInspector";
 
 export type ComponentId = string;
@@ -61,4 +62,10 @@ export interface ComponentNode {
    * current state, not a history/accumulation like renderCount.
    */
   hooks: readonly HookSummary[];
+  /**
+   * Structural summary of the Contexts this component reads via
+   * useContext(), including a shallow value preview per Context.
+   * Updated unconditionally on every sync(), like hooks/displayName.
+   */
+  contexts: readonly ContextSummary[];
 }

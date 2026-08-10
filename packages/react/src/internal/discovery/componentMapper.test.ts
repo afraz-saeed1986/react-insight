@@ -12,15 +12,17 @@ describe("mapDiscoveredComponent", () => {
       parentId: null,
       rendered: true,
       hooks: [],
+      contexts: [],
     };
 
-     expect(mapDiscoveredComponent(discovered)).toEqual({
+ expect(mapDiscoveredComponent(discovered)).toEqual({
       id: "fiber-1",
       rootId: "root-1",
       displayName: "App",
       parentId: null,
       rendered: true,
       hooks: [],
+      contexts: [],
     });
   });
 
@@ -32,6 +34,7 @@ describe("mapDiscoveredComponent", () => {
       parentId: null,
       rendered: false,
       hooks: [],
+      contexts: [],
     };
 
     expect(mapDiscoveredComponent(discovered).rendered).toBe(false);

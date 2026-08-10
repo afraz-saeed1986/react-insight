@@ -41,6 +41,20 @@ readonly hooks: ReadonlyArray<{
       | { readonly __type: "array"; readonly length: number; readonly items: readonly unknown[] }
       | { readonly __type: "object"; readonly keys: Readonly<Record<string, unknown>> };
   }>;
+
+  readonly contexts: ReadonlyArray<{
+    readonly index: number;
+    readonly displayName: string;
+    readonly value:
+      | string
+      | number
+      | boolean
+      | null
+      | undefined
+      | { readonly __type: string }
+      | { readonly __type: "array"; readonly length: number; readonly items: readonly unknown[] }
+      | { readonly __type: "object"; readonly keys: Readonly<Record<string, unknown>> };
+  }>;
 }
 
 export interface Insight {

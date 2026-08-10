@@ -19,5 +19,6 @@ export function mapDiscoveredComponent(
     parentId: discovered.parentId,
     rendered: discovered.rendered,
     hooks: discovered.hooks,
+    contexts: discovered.contexts,
   };
 }

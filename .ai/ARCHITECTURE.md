@@ -207,11 +207,11 @@ Current architecture includes:
 - React Context
 - Internal Root model (including root-level commit counting)
 - Internal RootRegistry
-- Internal Component model (including render count / last-rendered / mount-unmount lifecycle state)
+- Internal Component model (including render count / last-rendered / mount-unmount lifecycle state / structural hook summary / context dependency summary)
 - Internal ComponentRegistry
 - Internal React lifecycle hook (root lifecycle only — see below)
 - Internal Root Lifecycle Plugin
-- Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper)
+- Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector)
 - Internal Component Discovery Plugin
 
 The React package owns React-specific behavior only and delegates all Runtime responsibilities to `@react-insight/core`.
@@ -346,11 +346,11 @@ Current coverage includes:
 - Provider lifecycle integration
 - Mount / Unmount synchronization
 - Public API encapsulation
-- Component Discovery pipeline (Fiber Adapter, Traversal, Mapper, Hook Adapter, including Fiber `current`/`alternate` identity resolution for stable ids and `memoizedProps`/`memoizedState` comparison for `rendered` detection)
+- Component Discovery pipeline (Fiber Adapter, Traversal, Mapper, Hook Adapter, Hook Inspector, Context Inspector, including Fiber `current`/`alternate` identity resolution for stable ids, `memoizedProps`/`memoizedState` comparison for `rendered` detection, structural hook-shape classification with shallow value preview for `state`-kind hooks, and context-dependency-list walking with shallow value preview and displayName-based naming)
 
 ### End-to-End Validation (Playground)
 
-Beyond unit tests, Playground renders a real React tree through `InsightProvider` and is the only environment that exercises the real `react-dom` DevTools hook connection path (`hook.inject(...)`, module-load timing, actual commit notifications) rather than a directly-invoked test double. This caught several bugs invisible to fixture-based unit tests alone — see `DECISIONS.md`, 2026-07-21 — and remains the required check before considering discovery/render-tracking changes complete.
+Beyond unit tests, Playground renders a real React tree through `InsightProvider` and is the only environment that exercises the real `react-dom` DevTools hook connection path (`hook.inject(...)`, module-load timing, actual commit notifications) rather than a directly-invoked test double. This caught several bugs invisible to fixture-based unit tests alone — see `DECISIONS.md`, 2026-07-21 — and remains the required check before considering discovery/render-tracking/hook-tracking/context-tracking changes complete.
 
 ---
 
@@ -405,14 +405,14 @@ Current internal infrastructure includes:
 - Runtime access helpers
 - Root model (including commit counting)
 - RootRegistry
-- Component model (including render tracking and unmount history)
+- Component model (including render tracking, structural hook tracking with state-value preview, context-dependency tracking with value preview, and unmount history)
 - ComponentRegistry
 - Root Lifecycle hook and Plugin (effect-based)
-- Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper) and Plugin (registered eagerly from `createInsight()`, not effect-based)
+- Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector) and Plugin (registered eagerly from `createInsight()`, not effect-based)
 
 ### playground
 
-Integration application used to validate package exports, Runtime behavior and Developer Experience before publishing — and, since it now renders a real React tree through `@react-insight/react`, the only environment that validates Component Discovery and Render Tracking against actual `react-dom` behavior rather than synthetic Fiber fixtures.
+Integration application used to validate package exports, Runtime behavior and Developer Experience before publishing — and, since it now renders a real React tree through `@react-insight/react`, the only environment that validates Component Discovery, Render Tracking, Hook Tracking, and Context Tracking against actual `react-dom` behavior rather than synthetic Fiber fixtures.
 
 ---
 
@@ -474,6 +474,6 @@ pnpm test
 
 Continuous Integration verifies these quality gates automatically on every push and pull request.
 
-For changes touching Component Discovery or Render Tracking specifically, manual end-to-end verification through Playground (real browser, real React commits) is also required before considering the change complete — see Testing Strategy above.
+For changes touching Component Discovery, Render Tracking, Hook Tracking, or Context Tracking specifically, manual end-to-end verification through Playground (real browser, real React commits) is also required before considering the change complete — see Testing Strategy above.
 
 A change is considered complete only after all quality gates pass successfully.

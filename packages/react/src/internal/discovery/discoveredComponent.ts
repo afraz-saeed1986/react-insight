@@ -1,4 +1,5 @@
 import type { HookSummary } from "./hookInspector";
+import type { ContextSummary } from "./contextInspector";
 
 export type DiscoveredComponentId = string;
 
@@ -29,4 +30,5 @@ export interface DiscoveredComponent {
    * can and cannot distinguish. Empty for class components.
    */
   readonly hooks: readonly HookSummary[];
+  readonly contexts: readonly ContextSummary[];
 }

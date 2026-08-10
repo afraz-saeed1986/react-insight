@@ -21,6 +21,7 @@ function functionComponentFiber(memoizedState: HookNode | null): FiberNode {
     alternate: null,
     memoizedProps: null,
     memoizedState,
+    dependencies: null,
   };
 }
 
@@ -116,6 +117,7 @@ describe("inspectHooks", () => {
       // linked list — if this were walked as one, `.next` would be
       // undefined and misinterpreted.
       memoizedState: { count: 0 },
+      dependencies: null,
     };
 
     expect(inspectHooks(fiber)).toEqual([]);

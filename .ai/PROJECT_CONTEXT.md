@@ -103,6 +103,7 @@ The project has completed **Phase 1 — Core** and is actively progressing throu
 - End-to-end validation against a real React app via Playground — found and fixed 4 real bugs (DevTools hook stub missing `inject()`, StrictMode register/unregister race, discovery registered too late to see the first commit, pre-root commits silently dropped) — see `DECISIONS.md`, 2026-07-21
 - Render Tracking — overcounting fix: `renderCount` no longer overcounts ancestors/siblings cloned along the reconciliation path (see `DECISIONS.md`, 2026-07-26)
 - Structural Hook Tracking — `inspectHooks()` classifies each hook by shape on every commit (`ComponentSnapshot.hooks`); `state`-kind hooks additionally carry a shallow value preview. Does not resolve hook names or custom hook boundaries (see `DECISIONS.md`, 2026-07-27 and 2026-07-28)
+- Structural Context Tracking — `inspectContexts()` walks a fiber's context dependency list (`fiber.dependencies.firstContext`, separate from the hooks list) on every commit, deduplicated by `context` identity, exposed as `ComponentSnapshot.contexts` with a `displayName` (from `Context.displayName`, falling back to `"Context"`) and a value preview reusing `previewHookValue()` (see `DECISIONS.md`, 2026-07-29)
 
 ---
 
@@ -114,9 +115,9 @@ None currently. See **Current Focus** below for the next planned work.
 
 ### Not Started
 
-- Hook value/name resolution (custom hook boundaries; deferred on-demand technique, see `DECISIONS.md`, 2026-07-27)
-- State tracking
-- Context tracking
+- On-demand hook value/name resolution (custom hook boundaries; deferred technique, see `DECISIONS.md`, 2026-07-27)
+- Extending value preview to `ref`/`memo-like` hooks (no current driving need, see `DECISIONS.md`, 2026-07-28)
+- State tracking (beyond the `state`-kind hook value preview already shipped as part of Hook Tracking)
 - Timeline
 - DevTools panel
 - Inspector
@@ -181,7 +182,7 @@ Both Core and React packages are expected to follow the same quality standards.
 
 ## Current Focus
 
-Render Tracking's overcounting limitation is fixed and re-validated (see `DECISIONS.md`, 2026-07-26). Structural Hook Tracking (`inspectHooks()` — hook count, order, shape classification, and shallow value preview for `state`-kind hooks) is implemented and validated end-to-end in Playground (see `DECISIONS.md`, 2026-07-27 and 2026-07-28). The current focus is deciding the next area of work.
+Render Tracking's overcounting limitation is fixed and re-validated (see `DECISIONS.md`, 2026-07-26). Structural Hook Tracking, including shallow value preview for `state`-kind hooks, and structural Context Tracking are both implemented and validated end-to-end in Playground (see `DECISIONS.md`, 2026-07-27 through 2026-07-29). The current focus is deciding the next area of work.
 
 Candidates, in no particular order:
 
@@ -190,8 +191,8 @@ Candidates, in no particular order:
 - `ComponentRegistry` change-event emission and `getByRoot()` query — now has one plausible future consumer (an `onChange()` API), but still no current one
 - On-demand hook value/name resolution (the `react-debug-tools`-style technique deliberately deferred from the structural Hook Tracking slice — see `DECISIONS.md`, 2026-07-27), likely as part of Phase 3 Inspector groundwork rather than a standalone addition
 - Extending value preview to `ref`/`memo-like` hooks (same technique as `state`, but no current driving need — see `DECISIONS.md`, 2026-07-28)
-- Beginning Context tracking
-- Beginning the Phase 3 Inspector groundwork now that Component, Render, and structural Hook Tracking (including state values) are all stable and validated
+- Setting `InsightContext.displayName` internally, a cheap DX improvement noticed while validating Context Tracking (see `DECISIONS.md`, 2026-07-29) — cosmetic, not prioritized yet
+- Beginning the Phase 3 Inspector groundwork now that Component, Render, structural Hook, and structural Context Tracking are all stable and validated
 
 The Playground package continues to serve as the primary integration environment.
 
@@ -235,6 +236,7 @@ Current examples include:
 - Per-component render detection no longer relies on Fiber object identity for the `rendered` verdict: `resolveFiberIdentity()` compares `memoizedProps`/`memoizedState` against a self-maintained last-observed snapshot per stable id, fixing overcounting for ancestors/siblings cloned along the reconciliation path to a real update (see `DECISIONS.md`, 2026-07-26). Object identity (direct/alternate hit) is still used solely to resolve the stable id.
 - Structural Hook Tracking (`inspectHooks()`) classifies each hook by shape alone (no re-render, no instrumented dispatcher), consistent with the same zero-instrumentation positioning as Render Tracking. It guards against class components via `type.prototype.isReactComponent` rather than an unstable Fiber `tag`, since `isComponentFiber()` elsewhere deliberately treats function and class components alike (see `DECISIONS.md`, 2026-07-27).
 - `state`-kind hooks additionally carry a shallow (one-level), circular-safe value preview (`previewHookValue()`), read directly from `memoizedState` — safe against arbitrary/circular values by construction (no code path ever revisits a node past depth 1), not via an explicit `seen`-set guard (see `DECISIONS.md`, 2026-07-28).
+- Context values are tracked via a separate mechanism from hooks entirely: `inspectContexts()` walks `fiber.dependencies.firstContext` (not the hooks linked list `useContext` never touches), deduplicated by `context` object identity to stay correct despite a StrictMode-related duplicate-node anomaly observed in a controlled Playground experiment. Reuses `previewHookValue()` unchanged for value serialization, and resolves real Context names via the public, DevTools-supported `Context.displayName` convention where the consuming application sets it (see `DECISIONS.md`, 2026-07-29).
 
 Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18, 2026-07-21, and 2026-07-27):
 
@@ -244,22 +246,22 @@ Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18, 2026-0
 - `Insight.getComponents()` is pull-based only; there is no change-notification API yet.
 - Hook Tracking can resolve a value for `state`-kind hooks only (`previewHookValue()`, shallow/one-level, see `DECISIONS.md`, 2026-07-28); `ref`/`memo-like` hooks still carry no value, and no hook kind resolves a _name_, including custom hook boundaries (would require the on-demand, re-render-based technique deliberately not built into the always-on traversal pass).
 - Hook Tracking cannot distinguish `useState` from `useReducer`, or `useMemo` from `useCallback` (identical shapes at the Fiber level); both report a shared `kind` (`state`, `memo-like` respectively).
-- Hook Tracking is entirely blind to `useContext` (and any custom hook that is purely a `useContext` wrapper): `readContext()` does not consume a hook slot, so no entry appears in the hooks list at all.
+- Hook Tracking itself remains entirely blind to `useContext` at the hooks-list level (`readContext()` consumes no hook slot) — but Context values are now tracked separately via `contexts` (`inspectContexts()`, `DECISIONS.md`, 2026-07-29), so this is no longer a real data gap, only a hooks-list-specific one.
+- `InsightContext` (the library's own internal context, used by `useInsight()`) has no `displayName` set, so it surfaces in a consuming app's `contexts` as the generic label `"Context"` rather than something recognizable — noticed during Context Tracking validation, not yet addressed (see `DECISIONS.md`, 2026-07-29).
 
 ---
 
 ## Next Milestone
 
-Component Tracking and Render Tracking foundations are both complete, validated end-to-end against a real React application via Playground, and Render Tracking's overcounting limitation is closed. Structural Hook Tracking is implemented and validated the same way. The next milestone has not been chosen yet — see **Current Focus** above for the candidates under consideration.
+Component Tracking and Render Tracking foundations are both complete, validated end-to-end against a real React application via Playground, and Render Tracking's overcounting limitation is closed. Structural Hook Tracking (including state values) and structural Context Tracking are both implemented and validated the same way. The next milestone has not been chosen yet — see **Current Focus** above for the candidates under consideration.
 
 Longer-term goals remain:
 
 - On-demand hook value/name resolution (custom hook boundaries)
-- State tracking
-- Context tracking
+- Extending value preview to `ref`/`memo-like` hooks
 - Timeline
 - DevTools
 - Inspector
 - Session management
 
-The completed Core package, React lifecycle integration, full Component Discovery pipeline (mount/update/unmount), fully-accurate Render Tracking (root-level commit counting plus per-component render detection/count), structural Hook Tracking, a public read API (`getComponents()`), and a Playground that now actually exercises all of it against real React commits provide a stable, genuinely-validated platform for the next phase of work.
+The completed Core package, React lifecycle integration, full Component Discovery pipeline (mount/update/unmount), fully-accurate Render Tracking (root-level commit counting plus per-component render detection/count), structural Hook Tracking with state values, structural Context Tracking, a public read API (`getComponents()`), and a Playground that now actually exercises all of it against real React commits provide a stable, genuinely-validated platform for the next phase of work.

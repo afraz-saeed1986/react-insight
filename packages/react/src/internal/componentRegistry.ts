@@ -3,13 +3,8 @@ export type ComponentSyncInput = Pick<
   ComponentNode,
   "id" | "rootId" | "displayName" | "parentId"
 > & {
-  /**
-   * Whether this sync corresponds to React actually rendering the
-   * component in this commit (vs. merely being present in the tree).
-   * Only affects renderCount / lastRenderedAt, never structural fields.
-   */
   readonly rendered: boolean;
-} & Pick<ComponentNode, "hooks">;
+} & Pick<ComponentNode, "hooks" | "contexts">;
 
 
 
@@ -42,6 +37,7 @@ if (existing) {
         displayName: structural.displayName,
         parentId: structural.parentId,
         hooks: structural.hooks,
+        contexts: structural.contexts,
         renderCount: rendered ? existing.renderCount + 1 : existing.renderCount,
         lastRenderedAt: rendered ? Date.now() : existing.lastRenderedAt,
       });

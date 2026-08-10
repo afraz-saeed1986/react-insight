@@ -1296,3 +1296,95 @@ confirm it holds against a real, live-updating React tree in
 Playground before considering the change complete.
 
 ---
+
+## 2026-07-29
+
+### Added: structural Context Tracking (`inspectContexts()`)
+
+Chosen from the remaining Current Focus candidates over `onChange()`,
+root-container correlation, on-demand hook _name_ resolution, and
+extending value preview to `ref`/`memo-like` hooks (the last
+explicitly flagged 2026-07-28 as "no current consumer justifies it
+yet"). Context Tracking is a planned Roadmap Phase 2 item with a clear
+scope, not a speculative API, and is a natural continuation of Hook
+Tracking — ironically prompted by discovering (2026-07-27) that
+`useContext` leaves no trace in the hooks linked list at all, meaning
+Context values needed an entirely separate mechanism.
+
+**Research before implementation**, matching the project's standing
+pattern: `fiber.dependencies.firstContext` is a linked list, separate
+from the hooks list (`fiber.memoizedState`), that React maintains for
+any fiber — function or class component alike — that calls
+`useContext()`/`readContext()`. Each node already carries
+`memoizedValue` directly (unlike hook _names_, no walk up to the
+Provider fiber is needed). `context.displayName` is a documented,
+publicly-supported convention (the same one real React DevTools uses
+to label context consumers), making Context tracking able to recover
+real names where hook names could not.
+
+**Validated the actual shape before writing implementation**, via a
+controlled Playground experiment (a temporary `ContextProbe` component
+calling `useContext()` once, logging `fiber.dependencies` directly).
+Confirmed the shape above, and surfaced an unexpected finding:
+**two** chained dependency nodes appeared for a single `useContext()`
+call, both pointing at the same `context` object and the same
+`memoizedValue`. Most likely caused by React 18+ StrictMode's
+development-mode double-invocation of the component body without a
+full reset of the dependency list between the two invocations —
+Playground renders through `<StrictMode>` (`index.tsx`). Root cause
+not fully confirmed, but `inspectContexts()` was designed to be
+correct regardless: it deduplicates by `context` object identity while
+walking the chain, so a duplicate node (whatever its cause) never
+produces a duplicate entry in the output.
+
+**Implementation:** `inspectContexts(fiber)` walks
+`fiber.dependencies.firstContext`, deduplicating by `context` identity,
+and returns `ContextSummary[]` (`{ index, displayName, value }`) per
+distinct Context. `value` reuses `previewHookValue()` (2026-07-28)
+unchanged — no new serialization logic needed, since a Context's
+current value has exactly the same "arbitrary JS value, must be safe
+and bounded" shape as a `state`-kind hook's value. `displayName` falls
+back to the literal string `"Context"` when the consuming application
+never set `Context.displayName`.
+
+Threaded through the existing pipeline the same way `hooks` was:
+`FiberNode` gained a `dependencies: unknown` field and a new
+`ContextDependencyNode` type (`fiberAdapter.ts`),
+`DiscoveredComponent`/`ComponentSyncInput`/`ComponentNode` each gained
+a `contexts: readonly ContextSummary[]` field, `ComponentRegistry.sync()`
+updates it unconditionally (structural, like `hooks`/`displayName`),
+and the public `ComponentSnapshot` exposes it read-only.
+
+**Validated end-to-end in Playground**, per the project's standing
+rule for any Component Discovery change: `ContextProbe`, wrapped in a
+`ThemeContext.Provider value="dark"`, reported exactly one context
+entry (`ThemeContext="dark"`) — confirming the dedup logic actually
+neutralizes the StrictMode duplicate observed during the raw-shape
+experiment, and that `displayName` resolution works. A side finding,
+not a bug: `InsightDebugPanel` itself showed a `contexts:
+[Context={...full Insight instance...}]` entry, from the library's own
+internal `useInsight()` (`useContext`-based) — `InsightContext` has no
+`displayName` set today, so it falls back to the generic label. Left
+as-is for this session (cosmetic; the library's own internal context
+was never in scope for this feature), noted here as a cheap future
+improvement if it ever becomes worth doing.
+
+Files changed: `fiberAdapter.ts` (`FiberNode` gained `dependencies`;
+new `ContextDependencyNode` type), `contextInspector.ts` (new —
+`inspectContexts()`), `discoveredComponent.ts`, `traversal.ts`,
+`componentMapper.ts`, `component.ts`, `componentRegistry.ts`,
+`types.ts`, `createInsight.ts`.
+
+Reason:
+
+Closes the "Context tracking" item from Roadmap Phase 2 with a
+zero-instrumentation, always-on technique consistent with Render and
+Hook Tracking — no re-render, no Provider-tree walk, values already
+sitting on the consuming fiber itself. The StrictMode duplicate-node
+finding is recorded rather than silently worked around without
+explanation, matching this project's existing standard (e.g. the
+overcounting fix's regression history, 2026-07-26) of documenting
+real, observed anomalies even when the design already handles them
+defensively.
+
+---

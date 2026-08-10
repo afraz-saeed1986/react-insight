@@ -50,6 +50,7 @@ getComponents() {
         lastRenderedAt: component.lastRenderedAt,
         unmountedAt: component.unmountedAt,
         hooks: component.hooks,
+        contexts: component.contexts,
       }));
     },
 

@@ -5,12 +5,29 @@ export interface FiberNode {
   alternate: FiberNode | null;
   memoizedProps: unknown;
   memoizedState: unknown;
+  dependencies: unknown;
 }
 
 export interface HookNode {
   memoizedState: unknown;
   queue: unknown;
   next: HookNode | null;
+}
+
+/**
+ * A single node in a Fiber's context dependency list
+ * (`fiber.dependencies.firstContext`), maintained by React itself for
+ * any fiber — function or class component — that reads context via
+ * `useContext()` / `readContext()`. Shape confirmed via a controlled
+ * Playground experiment, not assumed from memory. `context` is left
+ * as `unknown` here: only contextInspector.ts's resolveDisplayName()
+ * is allowed to know that `context.displayName` is a safe, public,
+ * optional field on it.
+ */
+export interface ContextDependencyNode {
+  context: unknown;
+  memoizedValue: unknown;
+  next: ContextDependencyNode | null;
 }
 
 interface FiberRootContainer {

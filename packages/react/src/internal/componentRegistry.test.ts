@@ -15,6 +15,7 @@ function createComponent(id: string): ComponentNode {
     renderCount: 1,
     lastRenderedAt: Date.now(),
     hooks: [],
+     contexts: [],
   };
 }
 
@@ -64,7 +65,7 @@ describe("ComponentRegistry", () => {
   it("registers a new component on first sync", () => {
     const registry = new ComponentRegistry();
 
-    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true , hooks: []});
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true , hooks: [], contexts: []});
     
     const component = registry.get("app");
 
@@ -75,10 +76,10 @@ describe("ComponentRegistry", () => {
 it("updates structural fields without resetting mountedAt on repeated sync", () => {
     const registry = new ComponentRegistry();
 
-    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true , hooks: []});
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true , hooks: [], contexts: []});
     const firstMountedAt = registry.get("app")?.mountedAt;
 
-    registry.sync({ id: "app", rootId: "root-1", displayName: "AppRenamed", parentId: null, rendered: true, hooks: [] });
+    registry.sync({ id: "app", rootId: "root-1", displayName: "AppRenamed", parentId: null, rendered: true, hooks: [], contexts: [] });
 
     expect(registry.get("app")?.displayName).toBe("AppRenamed");
     expect(registry.get("app")?.mountedAt).toBe(firstMountedAt);
@@ -114,7 +115,7 @@ it("updates structural fields without resetting mountedAt on repeated sync", () 
 
   it("counts the mount itself as the first render", () => {
     const registry = new ComponentRegistry();
-    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true , hooks: []});
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true , hooks: [], contexts: []});
 
     expect(registry.get("app")?.renderCount).toBe(1);
     expect(registry.get("app")?.lastRenderedAt).not.toBeNull();
@@ -122,12 +123,12 @@ it("updates structural fields without resetting mountedAt on repeated sync", () 
 
   it("increments renderCount only when rendered is true", () => {
     const registry = new ComponentRegistry();
-    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true , hooks: []});
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true , hooks: [], contexts: []});
 
-    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: false, hooks: [] });
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: false, hooks: [], contexts: [] });
     expect(registry.get("app")?.renderCount).toBe(1);
 
-    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [] });
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [] , contexts: []});
     expect(registry.get("app")?.renderCount).toBe(2);
   });
 

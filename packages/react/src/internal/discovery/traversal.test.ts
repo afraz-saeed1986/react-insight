@@ -14,8 +14,9 @@ function fiber(
   alternate: FiberNode | null = null,
   memoizedProps: unknown = null,
   memoizedState: unknown = null,
+  dependencies: unknown = null,
 ): FiberNode {
-  return { type, child, sibling, alternate, memoizedProps, memoizedState };
+  return { type, child, sibling, alternate, memoizedProps, memoizedState, dependencies };
 }
 
 describe("traverse", () => {
