@@ -22,9 +22,16 @@ export function createInsight(): Insight {
   // before ReactDOM.createRoot().render() in the app entry point, so
   // registering here connects the hook adapter in time for that first
   // commit. See DECISIONS.md.
-  void runtime.registerPlugin(
+runtime
+  .registerPlugin(
     createComponentDiscoveryPlugin({ rootRegistry, componentRegistry }),
-  );
+  )
+  .catch((error: unknown) => {
+    console.error(
+      "[react-insight] Failed to register the Component Discovery plugin:",
+      error,
+    );
+  });
 
   const insight: InternalInsight = {
     [runtimeSymbol]: runtime,
@@ -56,6 +63,10 @@ getComponents() {
 
     unregisterPlugin(name) {
       return runtime.unregisterPlugin(name);
+    },
+
+    onChange(listener) {
+      return componentRegistry.subscribe(listener);
     },
   };
 

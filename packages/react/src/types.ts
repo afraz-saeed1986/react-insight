@@ -67,4 +67,17 @@ export interface Insight {
    * (mounted and unmounted).
    */
   getComponents(): ReadonlyArray<ComponentSnapshot>;
+
+  /**
+   * Subscribes to changes in tracked component state (mount, update,
+   * unmount). The listener carries no payload — re-read current state
+   * via getComponents() when it fires.
+   *
+   * Replaces the polling workaround previously used to observe
+   * Component Discovery / Render Tracking output (e.g. Playground's
+   * InsightDebugPanel).
+   *
+   * Returns an unsubscribe function.
+   */
+  onChange(listener: () => void): () => void;
 }

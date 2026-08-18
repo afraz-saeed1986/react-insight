@@ -11,6 +11,54 @@ export type ComponentSyncInput = Pick<
 export class ComponentRegistry {
   private readonly components = new Map<ComponentId, ComponentNode>();
 
+  private readonly listeners = new Set<() => void>();
+
+  /**
+   * Subscribes to changes in this registry's tracked components.
+   *
+   * The listener is called (with no arguments) after any call to
+   * sync() or markUnmounted() that actually mutates state — never on
+   * a no-op markUnmounted() call for an already-unmounted or unknown
+   * id. Callers are expected to re-read current state via values()
+   * (or, at the public API boundary, Insight.getComponents()) rather
+   * than receiving a diff or payload.
+   *
+   * Returns an unsubscribe function.
+   */
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+ private pendingNotify = false;
+
+  /**
+   * Batches notify() so that many sync()/markUnmounted() calls within
+   * the same synchronous commit-processing loop (see
+   * componentDiscoveryPlugin's onCommit, which calls sync() once per
+   * discovered component) collapse into a single notification, rather
+   * than firing once per component. Deferred via a microtask so it
+   * still runs before the next paint / effect flush.
+   */
+  private scheduleNotify(): void {
+    if (this.pendingNotify) return;
+    this.pendingNotify = true;
+
+    queueMicrotask(() => {
+      this.pendingNotify = false;
+      this.notify();
+    });
+  }
+
+  private notify(): void {
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
   register(component: ComponentNode): void {
     if (this.components.has(component.id)) {
       throw new Error(`Component "${component.id}" is already registered.`);
@@ -41,6 +89,7 @@ if (existing) {
         renderCount: rendered ? existing.renderCount + 1 : existing.renderCount,
         lastRenderedAt: rendered ? Date.now() : existing.lastRenderedAt,
       });
+      this.scheduleNotify();
       return;
     }
 
@@ -52,6 +101,7 @@ if (existing) {
       renderCount: 1,
       lastRenderedAt: Date.now(),
     });
+    this.scheduleNotify();
   }
 
   unregister(id: ComponentId): boolean {
@@ -81,6 +131,8 @@ if (existing) {
       status: "unmounted",
       unmountedAt: Date.now(),
     });
+
+   this.scheduleNotify();
 
     return true;
   }

@@ -8,13 +8,13 @@
         ┌───────────────┼────────────────┐
         │               │                │
         ▼               ▼                ▼
-   EventBus       PluginManager      Public API
-        │               │
-        ▼               ▼
- SubscriptionRegistry  InsightPlugin
-        │               │
-        ▼               ▼
-  Subscription     PluginContext
+   mitt (internal) PluginManager     Public API
+                        │
+                        ▼
+                   InsightPlugin
+                        │
+                        ▼
+                   PluginContext
 ```
 
 ---
@@ -52,16 +52,17 @@ It has **no knowledge** about plugin lifecycle or events.
 
 ---
 
-### EventBus
+### Internal Event System
 
-Responsible for:
-
-- Event dispatching
-- Event subscriptions
-- Subscription cleanup
-- Strongly typed event communication
-
-The EventBus implementation remains internal to the Core package.
+Runtime's internal event dispatching (used for `plugin:registered` /
+`plugin:removed` and for `PluginContext.emit()`/`on()`) is implemented
+directly with `mitt`, wired inside `Runtime` itself — there is no
+separate EventBus/Subscription/SubscriptionRegistry abstraction. An
+earlier, independently-designed EventBus/Subscription/SubscriptionRegistry
+implementation existed in `packages/core/src/events/` but was never
+wired into `Runtime` and was removed after confirming (by temporarily
+relocating it outside the package before deleting) that nothing
+depended on it. See `DECISIONS.md`.
 
 ---
 
@@ -249,7 +250,7 @@ React 18+ StrictMode invokes effects as mount → cleanup → mount in developme
 - PluginManager stores plugins only.
 - Plugins never access Runtime directly.
 - Plugins communicate only through `PluginContext`.
-- EventBus remains an internal implementation detail.
+- The internal event emitter (`mitt`) remains an internal implementation detail.
 - Event emitter implementation is private.
 - Public API is strongly typed using generics.
 - Plugin names are unique within a Runtime instance.
@@ -283,11 +284,9 @@ React Insight follows a **TypeScript-first** design philosophy.
 
 Compiler strictness is preserved instead of being relaxed to silence type errors.
 
-Current documented exception:
-
-- `SubscriptionRegistry` contains a single localized type assertion.
-- The assertion exists because TypeScript cannot currently express the relationship between a `Map` key and the corresponding value type when both depend on the same generic event key.
-- The assertion is documented with a safety comment instead of disabling compiler checks such as `strictFunctionTypes`.
+No current documented type-assertion exceptions. (The one that
+previously existed lived in `SubscriptionRegistry`, which was removed
+— see `DECISIONS.md`.)
 
 ---
 
@@ -310,9 +309,6 @@ Current coverage includes:
 
 - Runtime
 - PluginManager
-- EventBus
-- Subscription
-- SubscriptionRegistry
 - Built-in Logger Plugin
 
 ---

@@ -18,16 +18,7 @@ export default defineConfig({
 
       include: ["src/**/*.{ts,tsx}"],
 
-      exclude: [
-        "**/*.test.ts",
-        "**/*.d.ts",
-        "**/index.ts",
-
-        "src/insight/**",
-        "src/session/**",
-        "src/inspector/**",
-        "src/internal/**",
-      ],
+      exclude: ["**/*.test.ts", "**/*.d.ts", "**/index.ts"],
 
       thresholds: {
         statements: 90,

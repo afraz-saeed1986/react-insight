@@ -1269,3 +1269,203 @@ Next session:
   root-container correlation, on-demand hook \_name* resolution,
   extending value preview to `ref`/`memo-like` hooks, Context
   tracking, or Phase 3 Inspector groundwork).
+
+---
+
+## Session 20
+
+Completed:
+
+### Context Tracking
+
+- Implemented the Context Tracking / Context Inspector layer using
+  React Fiber's `dependencies.firstContext` dependency chain.
+- Added dedicated context-dependency representation without exposing
+  React's internal dependency nodes through the public API.
+- Extracted consumed Context identity and current value from Fiber
+  dependencies.
+- Added identity-based deduplication for repeated Context dependencies.
+- Added `Context.displayName` resolution with `"Context"` fallback.
+- Added bounded Context value preview handling consistent with the
+  project's non-invasive inspection approach.
+- Kept Context tracking observational: it does not re-render components,
+  invoke component functions, or install an instrumented dispatcher.
+- Threaded Context data through discovery into the component model and
+  public snapshot representation.
+- Kept Context tracking independent from structural Hook Tracking:
+  `useContext` is not represented by the hooks linked list, so Context
+  consumption is inspected separately through Fiber dependencies.
+
+### Architectural Consistency
+
+- Added Context Inspector as a distinct runtime inspection layer alongside
+  Hook Inspector, Fiber Adapter, Traversal, Mapper, and Component Registry.
+- Documented the boundary between React's internal Context dependency
+  nodes and the public component snapshot.
+- Kept Context tracking separate from reactive Context-change notifications;
+  consumption tracking is implemented, while change-event behavior remains
+  a separate concern.
+
+### Validation
+
+- Validated Context Tracking against the real React/Playground integration.
+- Verified Context data is associated with the correct component and does
+  not appear as a synthetic Hook entry.
+- Verified Context display-name fallback and identity deduplication.
+- Dedicated Context Inspector unit-test coverage remains a follow-up item
+  and is intentionally not marked complete here.
+
+### Documentation
+
+Updated:
+
+- `DECISIONS.md` — Context Tracking scope and architectural boundaries.
+- `PROJECT_CONTEXT.md` — completed capabilities and remaining focus.
+- `ROADMAP.md` — Context Tracking status and remaining test coverage.
+- `REACT_ARCHITECTURE.md` — Context Tracking responsibilities and limits.
+- `REACT_RUNTIME_ARCHITECTURE.md` — Context Inspector layer, contracts,
+  pipeline integration, and deferred concerns.
+
+Current status:
+
+- Component Discovery, Render Tracking, structural Hook Tracking,
+  state-hook value preview, and Context Tracking are implemented as
+  observational runtime capabilities.
+- Context consumption is tracked independently from Hook Tracking because
+  `useContext` does not create a node in the Fiber hook linked list.
+- Context Tracking is not being represented as a reactive subscription or
+  change-event mechanism.
+- Dedicated Context Inspector unit tests remain outstanding.
+- Remaining candidates include a reactive `onChange()` API,
+  root-container correlation, on-demand hook-name resolution, extending
+  value previews beyond state hooks, Context change notifications, and
+  Phase 3 Inspector groundwork.
+
+Next session:
+
+- Add dedicated Context Inspector unit tests and edge-case coverage.
+- Run the complete Quality Gate after the test additions.
+- Re-validate Context Tracking in Playground.
+- Then select the next feature from the remaining candidates.
+
+---
+
+## Session 21
+
+Completed:
+
+### Context Inspector Test Coverage
+
+- Added `contextInspector.test.ts` (`packages/react/src/internal/discovery/`),
+  closing the last acknowledged gap in the discovery pipeline's unit-test
+  coverage (see `DECISIONS.md`, 2026-07-29 and `SESSION_LOG.md`, Session 20).
+- Covers: empty/absent `dependencies`/`firstContext`, a single consumed
+  context, `displayName` resolution and its fallback to `"Context"`
+  (missing, empty string, non-string), multiple distinct contexts in list
+  order, identity-based deduplication of repeated dependency nodes
+  (the StrictMode-related anomaly documented 2026-07-29), non-dedup of
+  distinct context objects sharing a `displayName`, reuse of
+  `previewHookValue()` for the `value` field, and no leakage of the raw
+  context/dependency object in the output shape.
+
+### Small Fixes and Cleanup
+
+- **`InsightContext.displayName`** (`packages/react/src/context/InsightContext.ts`)
+  set to `"InsightContext"`, closing the cosmetic known limitation from
+  Context Tracking validation (`DECISIONS.md`, 2026-07-29): the library's
+  own internal context now surfaces with a real name instead of the
+  generic `"Context"` fallback wherever a consuming application's
+  `contexts` snapshot includes it. Added `InsightContext.test.ts`.
+- **`ComponentSnapshot` export fix** (`packages/react/src/index.ts`): the
+  type was defined and used as `Insight.getComponents()`'s return type,
+  and already documented in `REACT_ARCHITECTURE.md` as a current public
+  export, but was never actually re-exported from the package's entry
+  point. Added `export type { ComponentSnapshot } from "./types"`, plus
+  `index.test.ts` as a regression guard (imports the type from `./index`,
+  not `./types`, so a future removal fails typecheck).
+- **Removed empty stub files in `@react-insight/core`**: `src/insight/`
+  (`Insight.ts`, `createInsight.ts`, `InsightConfig.ts`, `index.ts` — all
+  zero-byte, unreferenced anywhere, and never mentioned in `.ai/`) and
+  `src/internal/` (`Internal.ts`, `index.ts` — same). `src/plugins/Plugin.ts`
+  (empty, superseded by `plugins/types.ts`) also removed. Confirmed via
+  a repo-wide search that none of these nine files were imported
+  anywhere before deleting. Cleaned the now-stale `coverage.exclude`
+  entries in `packages/core/vitest.config.ts` (`src/insight/**`,
+  `src/internal/**`, and the already-obsolete `src/session/**`,
+  `src/inspector/**` left over from the Session 14 removal).
+- **Removed dead files in `packages/playground`**: `src/index.ts` and
+  `src/plugins/greetingPlugin.ts`. Both had been documented as removed
+  back in Session 17, but were still physically present in the
+  repository; confirmed unreferenced by `index.html` (which loads only
+  `src/index.tsx`) and unreferenced anywhere else before deleting.
+
+### Validation
+
+Each change verified independently by the developer (test/typecheck/lint/build
+for the two affected packages; a manual `build` + run for the playground
+change, since `packages/playground` has no `lint`/`typecheck`/`test`
+script of its own).
+
+### Documentation
+
+Updated:
+
+- `REACT_ARCHITECTURE.md` (removed the Context Inspector test-gap note in
+  three places — the Context Tracking section, the folder-structure note,
+  and the Testing Strategy list, replacing the last with a real coverage
+  entry; added `contextInspector.test.ts` to the folder-structure diagram;
+  updated the `InsightContext.displayName` note from "known limitation"
+  to "resolved")
+- `PROJECT_CONTEXT.md` (removed the `InsightContext.displayName` item from
+  both the Current Focus candidate list and the Known/deferred limitations
+  list)
+- `SESSION_LOG.md` (this entry; also backfilled the previously-missing
+  Session 20 entry, which existed only in `ROADMAP.md` due to the
+  file-content mismatch described below)
+
+**Documentation process note:** `ROADMAP.md` and `SESSION_LOG.md` were
+found to contain the same session-by-session narrative content instead of
+the two files serving their distinct, documented purposes (`ROADMAP.md`
+for planned work/milestones/priorities per `CLAUDE.md`; `SESSION_LOG.md`
+for the session narrative itself). `ROADMAP.md` was also one session
+ahead of `SESSION_LOG.md` (through Session 20 vs. Session 19). This
+session corrected it: `SESSION_LOG.md` was backfilled with the missing
+Session 20 entry (copied from `ROADMAP.md`, since it was the more
+current of the two duplicated copies), and `ROADMAP.md` was rewritten
+from scratch to actually contain roadmap content (phases, current
+priorities, completed roadmap items), sourced from `PROJECT_CONTEXT.md`'s
+existing "Current Focus" / "Not Started" / "Next Milestone" sections
+rather than invented. No decision changed as a result — DECISIONS.md
+records genuine architectural/technical decisions, not corrections or
+cleanups, so it required no new entry.
+
+Current status:
+
+- Context Inspector now has full unit-test coverage, matching every
+  other module in the discovery pipeline.
+- All previously known-and-documented small gaps from Context Tracking
+  (Sessions 18-20) are closed: `InsightContext.displayName`, the
+  `contextInspector.test.ts` gap.
+- `ComponentSnapshot` is now actually importable from
+  `@react-insight/react`'s public entry point, matching what
+  `REACT_ARCHITECTURE.md` already documented.
+- `@react-insight/core` and `packages/playground` no longer contain
+  dead/orphaned files that were either undocumented or documented as
+  already removed.
+- `ROADMAP.md` and `SESSION_LOG.md` no longer duplicate each other and
+  are back in sync with the actual implementation.
+
+Next session:
+
+- Choose the next area of work from the remaining Current Focus
+  candidates in `PROJECT_CONTEXT.md` (a reactive `onChange()` API,
+  root-container correlation, on-demand hook value/name resolution,
+  extending value preview to `ref`/`memo-like` hooks, or Phase 3
+  Inspector groundwork).
+- Two larger, still-undecided items from the project baseline review
+  remain open and were deliberately not acted on this session: the
+  orphaned `EventBus`/`Subscription`/`SubscriptionRegistry` subsystem in
+  `@react-insight/core` (fully implemented and tested, but never wired
+  into `Runtime`, which uses `mitt` directly instead), and the absence
+  of any actual CI workflow despite `DECISIONS.md`/`ARCHITECTURE.md`
+  describing one as implemented and passing.

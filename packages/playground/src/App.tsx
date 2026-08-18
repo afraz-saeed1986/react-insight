@@ -25,9 +25,8 @@ function InsightDebugPanel() {
   const [, forceRefresh] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => forceRefresh((n) => n + 1), 500);
-    return () => clearInterval(interval);
-  }, []);
+    return insight.onChange(() => forceRefresh((n) => n + 1));
+  }, [insight]);
 
   return (
     <div style={{ marginTop: 16, fontFamily: "monospace" }}>

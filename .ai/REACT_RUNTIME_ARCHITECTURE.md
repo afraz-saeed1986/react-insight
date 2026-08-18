@@ -2,7 +2,7 @@
 
 > Status: Active implementation reference
 >
-> Last Updated: 2026-07-29
+> Last Updated: 2026-08-04
 >
 > This document defines the long-term architecture of the React runtime package. It serves as the primary architectural reference for all React-specific runtime features, including component discovery, tracking, inspection, and future DevTools integration.
 
@@ -1050,7 +1050,9 @@ mount or an update (`sync()`), and mark components as unmounted
 without discarding their history (`markUnmounted()`) on explicit
 unmount notifications from the Hook Adapter → Fiber Adapter →
 Traversal path. Own `mountedAt`, `unmountedAt`, `status`,
-`renderCount`, `lastRenderedAt`, `hooks`, and `contexts`.
+`renderCount`, `lastRenderedAt`, `hooks`, and `contexts`. Also owns a
+self-contained change-notification mechanism (`subscribe()`), separate
+from and independent of `@react-insight/core`'s event system.
 
 `sync()` updates structural fields (`rootId`, `displayName`,
 `parentId`, `hooks`, `contexts`) unconditionally on every call, and increments
@@ -1076,6 +1078,16 @@ Traversal unmount path, via `markUnmounted()`).
 **Output**
 
 A query API for consumers: `get(id)`, `has(id)`, `values()`, `size`.
+Also `subscribe(listener): () => void`, called after any `sync()` or
+`markUnmounted()` call that actually mutates state. Notifications are
+batched via `queueMicrotask()` (a private `scheduleNotify()`), not
+fired synchronously per call — `componentDiscoveryPlugin` calls
+`sync()` once per discovered component within a single commit, and an
+earlier synchronous-notify design caused a real, observed feedback
+loop in Playground (the subscribing consumer, `InsightDebugPanel`, is
+itself part of the observed React tree, so each notification
+triggered a re-render, which triggered a new commit, which triggered
+more notifications). See `DECISIONS.md`, 2026-08-04.
 
 **Must not know**
 
@@ -1087,13 +1099,16 @@ A query API for consumers: `get(id)`, `has(id)`, `values()`, `size`.
 
 **Implementation status**
 
-Change-event emission and root-scoped querying (`getByRoot`) are not
-implemented yet — see "Deferred Concerns" below. `register()` (which
-throws on a duplicate id) and `unregister()` (hard removal) are
-retained separately from `sync()`/`markUnmounted()` for callers where
-a duplicate id is a genuine error, or a full removal is genuinely
-intended, respectively — the discovery pipeline itself only ever uses
-`sync()`/`markUnmounted()`.
+Change-event emission is implemented (`subscribe()`, see "Output"
+above) — but as a self-contained mechanism local to `ComponentRegistry`,
+not through the Core event system (see "Deferred Concerns" below for
+why that path remains deferred). Root-scoped querying (`getByRoot`) is
+not implemented yet. `register()` (which throws on a duplicate id) and
+`unregister()` (hard removal) are retained separately from
+`sync()`/`markUnmounted()` for callers where a duplicate id is a
+genuine error, or a full removal is genuinely intended, respectively —
+the discovery pipeline itself only ever uses `sync()`/`markUnmounted()`,
+and only these two are wired to `subscribe()`'s notifications.
 
 ---
 
@@ -1126,10 +1141,13 @@ tracked in `DECISIONS.md`:
 - Renderer identity (`rendererId`) — see 2026-07-18.
 - `onPostCommitFiberRoot` — see 2026-07-18.
 - `ComponentRegistry` change-event emission through the Core event
-  system — no current consumer (no Plugin observes Registry changes
-  yet); Plugins that need discovery results call the Registry's query
-  API directly today. `Insight.getComponents()` (2026-07-21) is a
-  pull-based read, not a change subscription, and doesn't change this.
+  system — implemented, but not this way: `Insight.onChange()`
+  (2026-08-04) is backed by a self-contained `subscribe()` mechanism
+  local to `ComponentRegistry`, not Core's `mitt`-based event system.
+  `ComponentRegistry` has never depended on `Runtime` or any Core
+  type; routing through `PluginContext.emit()`/`on()` would have added
+  a new coupling with no benefit `sync()`/`markUnmounted()` need. See
+  `DECISIONS.md`, 2026-08-04.
 - `ComponentRegistry.getByRoot()` — no current consumer; discovery
   currently assumes a single root (see `DECISIONS.md`, 2026-07-18 —
   single React application per page).

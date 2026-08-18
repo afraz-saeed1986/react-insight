@@ -308,7 +308,7 @@ Unlike hook values, no re-render is needed here either: `memoizedValue` already 
 
 **Deduplication is a deliberate defensive design choice, not an assumption.** A controlled Playground experiment (a single `useContext()` call, logging `fiber.dependencies` directly) observed **two** chained dependency nodes for that one call, both pointing at the same `context` object — most likely caused by React 18+ StrictMode's development-mode double-invocation of the component body without a full reset of the dependency list between invocations (Playground renders through `<StrictMode>`). Root cause not fully confirmed. `inspectContexts()` deduplicates by `context` object identity while walking the chain, so the output is correct regardless of the exact cause, rather than assuming the list always has exactly one node per `useContext()` call. See `DECISIONS.md`, 2026-07-29.
 
-**Known limitation, not yet addressed:** the library's own internal `InsightContext` (used by `useInsight()`) has no `displayName` set, so it surfaces in a consuming app's `contexts` as the generic `"Context"` label with the full internal `Insight` instance as its value preview. Noticed during validation; cosmetic, cheap to fix, not yet prioritized. See `DECISIONS.md`, 2026-07-29.
+`InsightContext` (used by `useInsight()`) has `displayName` set to `"InsightContext"`, so it surfaces in a consuming app's `contexts` with a real name instead of the generic `"Context"` fallback.
 
 Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18):
 
@@ -453,6 +453,7 @@ packages/react
 │       │   ├── hookValuePreview.ts
 │       │   ├── hookValuePreview.test.ts
 │       │   ├── contextInspector.ts
+│       │   ├── contextInspector.test.ts
 │       │   ├── componentMapper.ts
 │       │   ├── componentMapper.test.ts
 │       │   ├── traversal.ts
@@ -472,14 +473,6 @@ packages/react
 Note: `useComponentDiscovery.ts` was removed (2026-07-21) — its logic
 was absorbed into `createInsight()`'s eager registration. There is no
 longer a React hook for Component Discovery.
-
-Note: `contextInspector.ts` has no dedicated `.test.ts` file yet
-(2026-07-29) — it was validated end-to-end in Playground (see "Context
-Tracking (structural)" above) but not yet unit-tested in isolation,
-unlike every other discovery-pipeline module. This is a real,
-acknowledged gap against this project's "every public-facing module
-gets dedicated unit tests" standard, not an intentional exception —
-see ROADMAP.md.
 
 ---
 
@@ -715,8 +708,7 @@ Current test coverage includes:
 - Hook Value Preview (`previewHookValue()` — primitives, shallow object/array preview, nested structures described by type not recursed, functions described without invocation, class instances described by constructor name, self-referential/circular values handled without throwing, large arrays/objects capped)
 - Component Mapper (structural translation, including `rendered`, `hooks`, and `contexts`)
 - Hook Adapter (`installReactDevtoolsHook()` idempotency and stub shape including `inject()`, `connectHookAdapter()` installation, chaining, error isolation, disconnect)
-
-**Gap, acknowledged (2026-07-29):** Context Inspector (`contextInspector.ts`) has no dedicated unit tests yet — it was validated only end-to-end in Playground (deduplication behavior, `displayName` resolution). Every other discovery-pipeline module has isolated unit-test coverage against plain fixtures; this one does not yet, and should before it is considered fully complete by this project's own standard. See ROADMAP.md.
+- Context Inspector (`inspectContexts()` — empty/absent dependency list, single and multiple distinct contexts, `displayName` resolution and its fallback to `"Context"`, identity-based deduplication of repeated dependency nodes, reuse of `previewHookValue()` for the `value` field, no leakage of the raw context/dependency object)
 
 **End-to-end validation (Playground):** unit tests alone were insufficient to catch several real bugs in this subsystem, because they invoke `hook.onCommitFiberRoot(...)` directly rather than going through React's actual `inject()`-based connection handshake or real effect/StrictMode timing. Playground renders a real component tree through `InsightProvider` and is the required final check for any change to Component Discovery, Render Tracking, Hook Tracking, or Context Tracking. See `DECISIONS.md`, 2026-07-21, 2026-07-27, and 2026-07-29.
 

@@ -191,7 +191,6 @@ Candidates, in no particular order:
 - `ComponentRegistry` change-event emission and `getByRoot()` query — now has one plausible future consumer (an `onChange()` API), but still no current one
 - On-demand hook value/name resolution (the `react-debug-tools`-style technique deliberately deferred from the structural Hook Tracking slice — see `DECISIONS.md`, 2026-07-27), likely as part of Phase 3 Inspector groundwork rather than a standalone addition
 - Extending value preview to `ref`/`memo-like` hooks (same technique as `state`, but no current driving need — see `DECISIONS.md`, 2026-07-28)
-- Setting `InsightContext.displayName` internally, a cheap DX improvement noticed while validating Context Tracking (see `DECISIONS.md`, 2026-07-29) — cosmetic, not prioritized yet
 - Beginning the Phase 3 Inspector groundwork now that Component, Render, structural Hook, and structural Context Tracking are all stable and validated
 
 The Playground package continues to serve as the primary integration environment.
@@ -247,7 +246,6 @@ Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18, 2026-0
 - Hook Tracking can resolve a value for `state`-kind hooks only (`previewHookValue()`, shallow/one-level, see `DECISIONS.md`, 2026-07-28); `ref`/`memo-like` hooks still carry no value, and no hook kind resolves a _name_, including custom hook boundaries (would require the on-demand, re-render-based technique deliberately not built into the always-on traversal pass).
 - Hook Tracking cannot distinguish `useState` from `useReducer`, or `useMemo` from `useCallback` (identical shapes at the Fiber level); both report a shared `kind` (`state`, `memo-like` respectively).
 - Hook Tracking itself remains entirely blind to `useContext` at the hooks-list level (`readContext()` consumes no hook slot) — but Context values are now tracked separately via `contexts` (`inspectContexts()`, `DECISIONS.md`, 2026-07-29), so this is no longer a real data gap, only a hooks-list-specific one.
-- `InsightContext` (the library's own internal context, used by `useInsight()`) has no `displayName` set, so it surfaces in a consuming app's `contexts` as the generic label `"Context"` rather than something recognizable — noticed during Context Tracking validation, not yet addressed (see `DECISIONS.md`, 2026-07-29).
 
 ---
 

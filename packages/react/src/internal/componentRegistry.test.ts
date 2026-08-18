@@ -1,7 +1,13 @@
-import { describe, expect, it } from "vitest";
-
+import { describe, expect, it, vi } from "vitest";
 import { ComponentRegistry } from "./componentRegistry";
 import type { ComponentNode } from "./component";
+
+// ComponentRegistry batches notify() via a microtask (see
+// componentRegistry.ts) — flush() lets a test wait for any pending
+// notification to actually fire before asserting on it.
+function flush(): Promise<void> {
+  return new Promise((resolve) => queueMicrotask(resolve));
+}
 
 function createComponent(id: string): ComponentNode {
   return {
@@ -121,7 +127,7 @@ it("updates structural fields without resetting mountedAt on repeated sync", () 
     expect(registry.get("app")?.lastRenderedAt).not.toBeNull();
   });
 
-  it("increments renderCount only when rendered is true", () => {
+it("increments renderCount only when rendered is true", () => {
     const registry = new ComponentRegistry();
     registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true , hooks: [], contexts: []});
 
@@ -132,4 +138,112 @@ it("updates structural fields without resetting mountedAt on repeated sync", () 
     expect(registry.get("app")?.renderCount).toBe(2);
   });
 
+  it("notifies subscribers when sync() mounts a new component", async () => {
+    const registry = new ComponentRegistry();
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith();
+  });
+
+  it("notifies subscribers when sync() updates an existing component", async () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "AppRenamed", parentId: null, rendered: false, hooks: [], contexts: [] });
+    await flush();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("notifies subscribers when markUnmounted() actually mutates state", async () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.markUnmounted("app");
+    await flush();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("collapses multiple sync() calls within the same tick into a single notification", async () => {
+    // This is the exact scenario that caused a real feedback-loop bug
+    // in Playground: componentDiscoveryPlugin calls sync() once per
+    // discovered component within a single commit. Without batching,
+    // one commit touching N components fired N notifications.
+    const registry = new ComponentRegistry();
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.sync({ id: "a", rootId: "root-1", displayName: "A", parentId: null, rendered: true, hooks: [], contexts: [] });
+    registry.sync({ id: "b", rootId: "root-1", displayName: "B", parentId: null, rendered: true, hooks: [], contexts: [] });
+    registry.sync({ id: "c", rootId: "root-1", displayName: "C", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not notify subscribers on a no-op markUnmounted() call", async () => {
+    const registry = new ComponentRegistry();
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    // Unknown id — no-op.
+    registry.markUnmounted("does-not-exist");
+    await flush();
+    expect(listener).not.toHaveBeenCalled();
+
+    // Already unmounted — no-op.
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    registry.markUnmounted("app");
+    await flush();
+    listener.mockClear();
+
+    registry.markUnmounted("app");
+    await flush();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("stops notifying after unsubscribe", async () => {
+    const registry = new ComponentRegistry();
+    const listener = vi.fn();
+    const unsubscribe = registry.subscribe(listener);
+
+    unsubscribe();
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("supports multiple independent subscribers", async () => {
+    const registry = new ComponentRegistry();
+    const listenerA = vi.fn();
+    const listenerB = vi.fn();
+
+    registry.subscribe(listenerA);
+    const unsubscribeB = registry.subscribe(listenerB);
+    unsubscribeB();
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    expect(listenerA).toHaveBeenCalledTimes(1);
+    expect(listenerB).not.toHaveBeenCalled();
+  });
+
 });
+

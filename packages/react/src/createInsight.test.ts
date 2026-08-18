@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createInsight } from "./createInsight";
 
@@ -55,5 +55,48 @@ it("discovers components as soon as a commit happens, without any InsightProvide
     expect(components[0]).toMatchObject({ displayName: "App", parentId: null });
   });
 
+  it("notifies onChange listeners when a real commit discovers a component", async () => {
+    const insight = createInsight();
+
+    const listener = vi.fn();
+    insight.onChange(listener);
+
+    const hook = (globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: {
+      onCommitFiberRoot?: (rendererId: number, root: unknown) => void;
+    } }).__REACT_DEVTOOLS_GLOBAL_HOOK__;
+
+    function App() { return null; }
+    const appFiber = { type: App, child: null, sibling: null, alternate: null };
+
+    hook?.onCommitFiberRoot?.(1, { current: appFiber });
+
+    // ComponentRegistry batches notify() via a microtask (see
+    // componentRegistry.ts) to collapse multiple sync() calls within
+    // the same commit into a single notification.
+   await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops notifying after onChange's unsubscribe function is called", async () => {
+    const insight = createInsight();
+
+    const listener = vi.fn();
+    const unsubscribe = insight.onChange(listener);
+    unsubscribe();
+
+    const hook = (globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: {
+      onCommitFiberRoot?: (rendererId: number, root: unknown) => void;
+    } }).__REACT_DEVTOOLS_GLOBAL_HOOK__;
+
+    function App() { return null; }
+    const appFiber = { type: App, child: null, sibling: null, alternate: null };
+
+    hook?.onCommitFiberRoot?.(1, { current: appFiber });
+
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    expect(listener).not.toHaveBeenCalled();
+  });
 
 });

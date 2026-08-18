@@ -1388,3 +1388,117 @@ real, observed anomalies even when the design already handles them
 defensively.
 
 ---
+
+## 2026-08-04
+
+### Removed orphaned EventBus/Subscription/SubscriptionRegistry from Core
+
+`packages/core/src/events/` (`EventBus.ts`, `IEventBus.ts`,
+`Subscription.ts`, `SubscriptionRegistry.ts`, plus their tests) has
+been removed.
+
+Context:
+
+This subsystem was an independently-designed internal event system,
+separate from the `mitt`-based implementation actually wired into
+`Runtime` (see 2026-07-07, "Internal event system"). It was fully
+implemented and had its own passing unit tests, but was never imported
+by `Runtime`, `PluginManager`, `plugins/`, or any package outside
+`core`, and was never re-exported from `packages/core/src/index.ts`.
+A repo-wide search confirmed zero references to it anywhere in
+production code.
+
+Verification before removal:
+
+Rather than deleting directly, the folder was first relocated outside
+`packages/core/src/` (so it fell outside every `tsconfig`/`vitest`
+include pattern) and the full Quality Gate (build, test, coverage,
+typecheck, lint) was run and passed unchanged. This empirically
+confirmed, not just reasoned about, that nothing in the live system
+depended on it before the folder was permanently deleted.
+
+Decision:
+
+Removed rather than wired in. `Runtime`'s existing `mitt`-based event
+system already provides everything the Runtime and its plugins
+currently need (typed `emit`/`on`, unsubscribe-via-closure); adopting
+the second implementation instead would have meant a larger,
+higher-risk `Runtime` rewrite to replace working, already-tested code
+with no new capability gained.
+
+Reason:
+
+Same no-placeholder-code principle already applied repeatedly in this
+project (`RootRegistration`, `ComponentNode.children`,
+`packages/core/src/insight/` stub files) — code without a real
+consumer is removed rather than left as a second, confusing
+implementation of something already solved elsewhere.
+
+---
+
+## 2026-08-04
+
+### Added Insight.onChange(), replacing Playground's polling workaround
+
+`Insight` gains `onChange(listener: () => void): () => void`.
+`ComponentRegistry` gains a self-contained `subscribe()`/notify
+mechanism, independent of `@react-insight/core`'s event system —
+`ComponentRegistry` has never depended on `Runtime` or any Core type,
+and wiring it through `PluginContext.emit()`/`on()` would have added a
+new coupling for no benefit `sync()`/`markUnmounted()` don't already
+need.
+
+This closes the "reactive change API" candidate that had been listed
+in `PROJECT_CONTEXT.md`'s Current Focus since Session 15, deferred
+until a real non-demo consumer existed. Playground's
+`InsightDebugPanel`, which had been polling `getComponents()` via
+`setInterval(..., 500)` since Session 16, was that consumer —
+`InsightDebugPanel` now subscribes via `insight.onChange()` instead.
+
+Real bug found and fixed via Playground testing, not caught by unit
+tests:
+
+The first implementation called `notify()` synchronously, once per
+`sync()`/`markUnmounted()` call. `componentDiscoveryPlugin`'s
+`onCommit` handler calls `sync()` once per discovered component within
+a single commit — for a Playground tree of 6 components, one real
+commit fired 6 synchronous notifications. Because `InsightDebugPanel`
+is itself part of the React tree being observed, each notification's
+`forceRefresh()` triggered a new commit, which triggered 6 more
+notifications, and so on: a self-sustaining feedback loop. Confirmed
+in the browser: clicking "Increment" once produced `renders: 52` on
+`InsightDebugPanel` and a hook value in the hundreds, growing
+continuously. The previous polling implementation had never exposed
+this, since its fixed 500ms interval incidentally throttled the loop
+below a runaway rate.
+
+Fix: `ComponentRegistry.scheduleNotify()` batches all `notify()` calls
+within the same synchronous execution window into a single
+`queueMicrotask()`-deferred notification, using a `pendingNotify` flag
+to collapse repeated calls. This still lets the conceptual feedback
+loop exist (`InsightDebugPanel` observing its own subtree is inherent
+to how Component Discovery works), but caps it at one notification per
+microtask tick rather than one per synced component, matching the
+throttling behavior real DevTools-style tools use for the same reason.
+
+A regression test (`componentRegistry.test.ts`, "collapses multiple
+sync() calls within the same tick into a single notification")
+reproduces the exact scenario that caused the bug, so a future change
+that reintroduces per-call synchronous notification fails a test
+instead of requiring rediscovery in a browser.
+
+Files changed: `componentRegistry.ts` (`subscribe()`, `notify()`,
+`scheduleNotify()`, wired into `sync()` and `markUnmounted()`),
+`componentRegistry.test.ts`, `types.ts` (`Insight.onChange()`),
+`createInsight.ts`, `createInsight.test.ts`,
+`packages/playground/src/App.tsx` (`InsightDebugPanel` switched from
+`setInterval` polling to `insight.onChange()`).
+
+Reason:
+
+Reinforces this project's standing pattern (see the `renderCount`
+overcounting saga, 2026-07-26): a design that looks correct against a
+single, simple test case can still hide a real bug that only a
+live, real-React-tree test in Playground exposes — unit tests alone,
+testing `ComponentRegistry` in isolation from any React tree, could
+not have surfaced this specific feedback-loop failure mode.
