@@ -25,7 +25,21 @@ function InsightDebugPanel() {
   const [, forceRefresh] = useState(0);
 
   useEffect(() => {
-    return insight.onChange(() => forceRefresh((n) => n + 1));
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const unsubscribe = insight.onChange(() => {
+      if (timeoutId !== null) return;
+
+      timeoutId = setTimeout(() => {
+        timeoutId = null;
+        forceRefresh((n) => n + 1);
+      }, 150);
+    });
+
+    return () => {
+      unsubscribe();
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    };
   }, [insight]);
 
   return (

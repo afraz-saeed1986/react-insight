@@ -195,6 +195,54 @@ it("increments renderCount only when rendered is true", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it("does not notify subscribers when sync() reports no render and nothing structural changed", async () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: false, hooks: [], contexts: [] });
+    await flush();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("still notifies when rendered is true even if structural fields are unchanged", async () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("notifies when only hooks/contexts differ, even if rendered is false", async () => {
+    const registry = new ComponentRegistry();
+    registry.sync({
+      id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true,
+      hooks: [{ index: 0, kind: "state", value: 0 }], contexts: [],
+    });
+    await flush();
+
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.sync({
+      id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: false,
+      hooks: [{ index: 0, kind: "state", value: 1 }], contexts: [],
+    });
+    await flush();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it("does not notify subscribers on a no-op markUnmounted() call", async () => {
     const registry = new ComponentRegistry();
     const listener = vi.fn();

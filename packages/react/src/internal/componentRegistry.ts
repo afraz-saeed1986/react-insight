@@ -7,6 +7,12 @@ export type ComponentSyncInput = Pick<
 } & Pick<ComponentNode, "hooks" | "contexts">;
 
 
+function sameStructural<T>(a: readonly T[], b: readonly T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 
 export class ComponentRegistry {
   private readonly components = new Map<ComponentId, ComponentNode>();
@@ -79,6 +85,17 @@ sync(input: ComponentSyncInput): void {
     const existing = this.components.get(input.id);
 
 if (existing) {
+     const structurallyChanged =
+        existing.rootId !== structural.rootId ||
+        existing.displayName !== structural.displayName ||
+        existing.parentId !== structural.parentId ||
+        !sameStructural(existing.hooks, structural.hooks) ||
+        !sameStructural(existing.contexts, structural.contexts);
+
+      if (!rendered && !structurallyChanged) {
+        return;
+      }
+      
       this.components.set(input.id, {
         ...existing,
         rootId: structural.rootId,
