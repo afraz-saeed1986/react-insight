@@ -23,16 +23,31 @@ function Greeting() {
 function InsightDebugPanel() {
   const insight = useInsight();
   const [, forceRefresh] = useState(0);
+  const lastSnapshotRef = useRef<string | null>(null);
 
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const relevantSnapshot = () =>
+      JSON.stringify(
+        insight.getComponents().filter((c) => c.displayName !== "InsightDebugPanel"),
+      );
+
+    const refreshIfChanged = () => {
+      const next = relevantSnapshot();
+      if (next === lastSnapshotRef.current) return;
+      lastSnapshotRef.current = next;
+      forceRefresh((n) => n + 1);
+    };
+
+    refreshIfChanged();
 
     const unsubscribe = insight.onChange(() => {
       if (timeoutId !== null) return;
 
       timeoutId = setTimeout(() => {
         timeoutId = null;
-        forceRefresh((n) => n + 1);
+        refreshIfChanged();
       }, 150);
     });
 
@@ -41,7 +56,6 @@ function InsightDebugPanel() {
       if (timeoutId !== null) clearTimeout(timeoutId);
     };
   }, [insight]);
-
   return (
     <div style={{ marginTop: 16, fontFamily: "monospace" }}>
       <button onClick={() => forceRefresh((n) => n + 1)}>Refresh snapshot</button>
