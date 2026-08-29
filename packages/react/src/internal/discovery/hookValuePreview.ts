@@ -25,6 +25,17 @@ export type HookValuePreview =
 // this size rather than unbounded.
 const MAX_PREVIEW_ENTRIES = 20;
 
+// Bounds cost/output size for long strings the same way
+// MAX_PREVIEW_ENTRIES already bounds arrays/objects. Without this,
+// previewLeaf() would embed an arbitrarily large string verbatim in
+// every hook/context value preview. Confirmed as a real, not merely
+// theoretical, issue via Playground once ref-value preview was added:
+// Playground's own InsightDebugPanel holds a full JSON-serialized
+// component snapshot in a ref (lastSnapshotRef), which is exactly the
+// "arbitrary large string" case this preview must stay safe against.
+// See DECISIONS.md.
+const MAX_STRING_LENGTH = 200;
+
 function describeType(value: object): string {
   const ctorName = (value as { constructor?: { name?: string } }).constructor?.name;
   return ctorName && ctorName !== "Object" ? ctorName : "object";
@@ -35,7 +46,14 @@ function previewLeaf(value: unknown): HookValueLeaf {
 
   const type = typeof value;
 
-  if (type === "string" || type === "number" || type === "boolean" || type === "undefined") {
+  if (type === "string") {
+    const str = value as string;
+    return str.length > MAX_STRING_LENGTH
+      ? `${str.slice(0, MAX_STRING_LENGTH)}… (${str.length} chars total)`
+      : str;
+  }
+
+  if (type === "number" || type === "boolean" || type === "undefined") {
     return value as HookValueLeaf;
   }
 

@@ -12,7 +12,14 @@ export type HookKind =
 export interface HookSummary {
   readonly index: number;
   readonly kind: HookKind;
-  /** Only present when kind === "state" (useState/useReducer). */
+  /**
+   * Present for kind === "state" (useState/useReducer — the value
+   * itself), "ref" (useRef — the ref's current contents, not the
+   * { current } wrapper object), and "memo-like" (useMemo/useCallback
+   * — the memoized value itself, not the dependency array). Absent
+   * for "effect" | "layout-effect" | "unknown", which carry no
+   * previewable value.
+   */
   readonly value?: HookValuePreview;
 }
 
@@ -82,6 +89,39 @@ function classifyHook(hook: HookNode): HookKind {
   return "unknown";
 }
 
+const KINDS_WITH_VALUE = new Set<HookKind>(["state", "ref", "memo-like"]);
+
+/**
+ * Extracts the previewable value for an already-classified hook,
+ * mirroring the exact shape checks classifyHook() used to arrive at
+ * that kind in the first place:
+ *
+ * - "state": memoizedState IS the value (useState/useReducer store it
+ *   directly, no wrapper).
+ * - "ref": memoizedState is the { current } wrapper object produced by
+ *   useRef — the previewable value is .current, not the wrapper
+ *   itself (previewing the wrapper would just show
+ *   { __type: "object", keys: { current: ... } }, which is noise).
+ * - "memo-like": memoizedState is [value, deps] — the previewable
+ *   value is index 0 (the memoized result), not the dependency array
+ *   at index 1.
+ *
+ * Returns undefined for any other kind, which the caller uses to
+ * decide whether to attach a value at all.
+ */
+function extractHookValue(kind: HookKind, memoizedState: unknown): unknown {
+  switch (kind) {
+    case "state":
+      return memoizedState;
+    case "ref":
+      return (memoizedState as { current: unknown }).current;
+    case "memo-like":
+      return (memoizedState as readonly [unknown, unknown])[0];
+    default:
+      return undefined;
+  }
+}
+
 /**
  * Walks the hooks linked list rooted at a function component Fiber's
  * `memoizedState` and returns a structural summary of each hook.
@@ -112,11 +152,11 @@ export function inspectHooks(fiber: FiberNode): HookSummary[] {
   let hook = fiber.memoizedState as HookNode | null;
   let index = 0;
 
- while (hook) {
+  while (hook) {
     const kind = classifyHook(hook);
     summaries.push(
-      kind === "state"
-        ? { index, kind, value: previewHookValue(hook.memoizedState) }
+      KINDS_WITH_VALUE.has(kind)
+        ? { index, kind, value: previewHookValue(extractHookValue(kind, hook.memoizedState)) }
         : { index, kind },
     );
     hook = hook.next;

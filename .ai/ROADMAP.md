@@ -67,6 +67,16 @@ on-demand hook name resolution and the Inspector/DevTools panel itself
   recent session.
 - `Insight.getComponents()` public read API (`ComponentSnapshot`),
   actually exported from the package's public entry point.
+- `Insight.onChange(listener)` reactive change-notification API,
+  backed by a self-contained `ComponentRegistry.subscribe()` mechanism
+  (not the Core event system), replacing Playground's polling
+  workaround. Notifications are batched via `queueMicrotask()` and
+  gated by a structural dirty-check in `sync()`, so subscribers are
+  only notified when something actually changed (see `DECISIONS.md`,
+  2026-08-04 and 2026-08-23).
+- Removed the orphaned `EventBus`/`Subscription`/`SubscriptionRegistry`
+  system from `@react-insight/core` — fully implemented and tested,
+  but never wired into `Runtime` (see `DECISIONS.md`, 2026-08-04).
 - `InsightContext.displayName` set, so the library's own internal
   context surfaces with a real name in Context Tracking output.
 - Playground wired to a real React application (`InsightProvider`,
@@ -85,10 +95,9 @@ No single next feature has been committed to yet. Open candidates, in
 no particular order (see `PROJECT_CONTEXT.md`, "Current Focus" for the
 up-to-date list and reasoning):
 
-- A real reactive change API on `Insight` (e.g. `onChange()`),
-  replacing Playground's polling workaround.
 - Root-container correlation for multi-application pages.
-- `ComponentRegistry` change-event emission and `getByRoot()` query.
+- `ComponentRegistry.getByRoot()` query (`onChange()` itself shipped —
+  see Completed above).
 - On-demand hook value/name resolution (likely Phase 3 work).
 - Extending value preview to `ref`/`memo-like` hooks.
 - Beginning Phase 3 Inspector groundwork.
@@ -103,12 +112,8 @@ deliberately not yet assigned to a session, pending a decision:
 - **No CI workflow actually exists in the repository**, despite
   `ARCHITECTURE.md`/`DECISIONS.md` describing GitHub Actions CI as
   implemented and passing on a Node 22/24 matrix. Either the workflow
-  needs to be added, or the documentation needs correcting.
-- **Orphaned event system in `@react-insight/core`**: `EventBus`,
-  `Subscription`, `SubscriptionRegistry` are fully implemented and
-  tested but never used by `Runtime` (which uses `mitt` directly) and
-  never exported from the package. Needs a decision: wire it in, or
-  remove it.
+  needs to be added, or the documentation needs correcting. Re-flagged
+  as of the most recent session's inspection — still unresolved.
 
 ---
 

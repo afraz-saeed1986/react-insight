@@ -45,9 +45,6 @@ The project has completed **Phase 1 — Core** and is actively progressing throu
 - Generic PluginContext
 - Generic InsightPlugin
 - Generic `definePlugin()`
-- EventBus
-- Subscription
-- SubscriptionRegistry
 - Built-in Logger Plugin
 - Logger Plugin factory API
 - Atomic plugin registration
@@ -104,6 +101,7 @@ The project has completed **Phase 1 — Core** and is actively progressing throu
 - Render Tracking — overcounting fix: `renderCount` no longer overcounts ancestors/siblings cloned along the reconciliation path (see `DECISIONS.md`, 2026-07-26)
 - Structural Hook Tracking — `inspectHooks()` classifies each hook by shape on every commit (`ComponentSnapshot.hooks`); `state`-kind hooks additionally carry a shallow value preview. Does not resolve hook names or custom hook boundaries (see `DECISIONS.md`, 2026-07-27 and 2026-07-28)
 - Structural Context Tracking — `inspectContexts()` walks a fiber's context dependency list (`fiber.dependencies.firstContext`, separate from the hooks list) on every commit, deduplicated by `context` identity, exposed as `ComponentSnapshot.contexts` with a `displayName` (from `Context.displayName`, falling back to `"Context"`) and a value preview reusing `previewHookValue()` (see `DECISIONS.md`, 2026-07-29)
+- `Insight.onChange(listener)` reactive change-notification API, backed by a self-contained `ComponentRegistry.subscribe()`/`scheduleNotify()` mechanism (batched via `queueMicrotask()`), replacing Playground's `InsightDebugPanel` polling workaround. `sync()` performs a structural dirty-check before notifying, so subscribers are only notified when something about a component actually changed (see `DECISIONS.md`, 2026-08-04 and 2026-08-23)
 
 ---
 
@@ -186,12 +184,11 @@ Render Tracking's overcounting limitation is fixed and re-validated (see `DECISI
 
 Candidates, in no particular order:
 
-- A real reactive change API on `Insight` (e.g. `onChange()`), replacing Playground's polling workaround — still deferred pending a real non-demo consumer
 - Root-container correlation for multi-application pages, still deferred and unprioritized (see `DECISIONS.md`, 2026-07-18)
-- `ComponentRegistry` change-event emission and `getByRoot()` query — now has one plausible future consumer (an `onChange()` API), but still no current one
+- `ComponentRegistry.getByRoot()` query — `onChange()` itself shipped (2026-08-04, hardened 2026-08-23) via a self-contained `subscribe()` mechanism rather than the Core event system; `getByRoot()` still has no current consumer
 - On-demand hook value/name resolution (the `react-debug-tools`-style technique deliberately deferred from the structural Hook Tracking slice — see `DECISIONS.md`, 2026-07-27), likely as part of Phase 3 Inspector groundwork rather than a standalone addition
 - Extending value preview to `ref`/`memo-like` hooks (same technique as `state`, but no current driving need — see `DECISIONS.md`, 2026-07-28)
-- Beginning the Phase 3 Inspector groundwork now that Component, Render, structural Hook, and structural Context Tracking are all stable and validated
+- Beginning the Phase 3 Inspector groundwork now that Component, Render, structural Hook, structural Context Tracking, and a reactive `onChange()` API are all stable and validated
 
 The Playground package continues to serve as the primary integration environment.
 
@@ -236,13 +233,13 @@ Current examples include:
 - Structural Hook Tracking (`inspectHooks()`) classifies each hook by shape alone (no re-render, no instrumented dispatcher), consistent with the same zero-instrumentation positioning as Render Tracking. It guards against class components via `type.prototype.isReactComponent` rather than an unstable Fiber `tag`, since `isComponentFiber()` elsewhere deliberately treats function and class components alike (see `DECISIONS.md`, 2026-07-27).
 - `state`-kind hooks additionally carry a shallow (one-level), circular-safe value preview (`previewHookValue()`), read directly from `memoizedState` — safe against arbitrary/circular values by construction (no code path ever revisits a node past depth 1), not via an explicit `seen`-set guard (see `DECISIONS.md`, 2026-07-28).
 - Context values are tracked via a separate mechanism from hooks entirely: `inspectContexts()` walks `fiber.dependencies.firstContext` (not the hooks linked list `useContext` never touches), deduplicated by `context` object identity to stay correct despite a StrictMode-related duplicate-node anomaly observed in a controlled Playground experiment. Reuses `previewHookValue()` unchanged for value serialization, and resolves real Context names via the public, DevTools-supported `Context.displayName` convention where the consuming application sets it (see `DECISIONS.md`, 2026-07-29).
+- `Insight.onChange()` is backed by a self-contained `ComponentRegistry.subscribe()`/`scheduleNotify()` mechanism, not the Core `mitt`-based event system, since `ComponentRegistry` has never depended on `Runtime` or any Core type. Notifications are batched via `queueMicrotask()` and gated by a structural dirty-check in `sync()`, so subscribers are only notified when a component's tracked data actually changed (see `DECISIONS.md`, 2026-08-04 and 2026-08-23).
 
 Known, deliberately deferred limitations (see `DECISIONS.md`, 2026-07-18, 2026-07-21, and 2026-07-27):
 
 - Renderer identity (`rendererId`) is not tracked yet — single renderer (`react-dom`) assumed.
 - `onPostCommitFiberRoot` is not wired yet.
 - Component Discovery assumes a single React application per page (no container-based root correlation yet).
-- `Insight.getComponents()` is pull-based only; there is no change-notification API yet.
 - Hook Tracking can resolve a value for `state`-kind hooks only (`previewHookValue()`, shallow/one-level, see `DECISIONS.md`, 2026-07-28); `ref`/`memo-like` hooks still carry no value, and no hook kind resolves a _name_, including custom hook boundaries (would require the on-demand, re-render-based technique deliberately not built into the always-on traversal pass).
 - Hook Tracking cannot distinguish `useState` from `useReducer`, or `useMemo` from `useCallback` (identical shapes at the Fiber level); both report a shared `kind` (`state`, `memo-like` respectively).
 - Hook Tracking itself remains entirely blind to `useContext` at the hooks-list level (`readContext()` consumes no hook slot) — but Context values are now tracked separately via `contexts` (`inspectContexts()`, `DECISIONS.md`, 2026-07-29), so this is no longer a real data gap, only a hooks-list-specific one.
@@ -262,4 +259,4 @@ Longer-term goals remain:
 - Inspector
 - Session management
 
-The completed Core package, React lifecycle integration, full Component Discovery pipeline (mount/update/unmount), fully-accurate Render Tracking (root-level commit counting plus per-component render detection/count), structural Hook Tracking with state values, structural Context Tracking, a public read API (`getComponents()`), and a Playground that now actually exercises all of it against real React commits provide a stable, genuinely-validated platform for the next phase of work.
+The completed Core package, React lifecycle integration, full Component Discovery pipeline (mount/update/unmount), fully-accurate Render Tracking (root-level commit counting plus per-component render detection/count), structural Hook Tracking with state values, structural Context Tracking, a public read API (`getComponents()`), a verified reactive `onChange()` API, and a Playground that now actually exercises all of it against real React commits provide a stable, genuinely-validated platform for the next phase of work.

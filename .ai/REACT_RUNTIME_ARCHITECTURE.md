@@ -2,7 +2,7 @@
 
 > Status: Active implementation reference
 >
-> Last Updated: 2026-08-04
+> Last Updated: 2026-08-23
 >
 > This document defines the long-term architecture of the React runtime package. It serves as the primary architectural reference for all React-specific runtime features, including component discovery, tracking, inspection, and future DevTools integration.
 
@@ -1054,20 +1054,27 @@ Traversal path. Own `mountedAt`, `unmountedAt`, `status`,
 self-contained change-notification mechanism (`subscribe()`), separate
 from and independent of `@react-insight/core`'s event system.
 
-`sync()` updates structural fields (`rootId`, `displayName`,
-`parentId`, `hooks`, `contexts`) unconditionally on every call, and increments
-`renderCount` / updates `lastRenderedAt` only when the incoming
-`rendered` flag is `true`. `hooks` and `contexts` are treated as structural, like
-`displayName` — not gated on `rendered` — since their current shape and
-values are facts about the Fiber state observed in this commit, not
-accumulated history like `renderCount`. Updating `rootId`
-unconditionally is what allows the discovery pipeline to tag
-components with a temporary `"pending"` `rootId` before any root is
-registered (see the React package's `componentDiscoveryPlugin`, which
-is registered eagerly and can therefore observe commits before root
-registration completes) — the next real commit self-heals `rootId` to
-the actual value at no extra cost, with no reconciliation logic needed
-in the Registry itself. See `DECISIONS.md`, 2026-07-21.
+`sync()` compares the incoming `ComponentSyncInput` against any
+existing stored state before writing or notifying. When the incoming
+`rendered` flag is `true`, the call always proceeds: structural fields
+(`rootId`, `displayName`, `parentId`, `hooks`, `contexts`) are written,
+and `renderCount`/`lastRenderedAt` are updated. When `rendered` is
+`false`, `sync()` only writes and notifies if at least one structural
+field actually differs from what's stored; otherwise the call is a
+no-op. `hooks` and `contexts` are treated as structural, like
+`displayName` — writable independently of `rendered` — since their
+current shape and values are facts about the Fiber state observed in
+this commit, not accumulated history like `renderCount`. Structural
+fields updating whenever they differ (not gated on `rendered`) is what
+still allows the discovery pipeline to tag components with a temporary
+`"pending"` `rootId` before any root is registered (see the React
+package's `componentDiscoveryPlugin`, which is registered eagerly and
+can therefore observe commits before root registration completes) —
+the next real commit self-heals `rootId` to the actual value at no
+extra cost, with no reconciliation logic needed in the Registry
+itself. See `DECISIONS.md`, 2026-07-21 and 2026-08-23 (the latter
+added the no-op path itself; prior to it, `sync()` wrote and notified
+on every single call regardless of whether anything had changed).
 
 **Input**
 
@@ -1079,15 +1086,30 @@ Traversal unmount path, via `markUnmounted()`).
 
 A query API for consumers: `get(id)`, `has(id)`, `values()`, `size`.
 Also `subscribe(listener): () => void`, called after any `sync()` or
-`markUnmounted()` call that actually mutates state. Notifications are
-batched via `queueMicrotask()` (a private `scheduleNotify()`), not
-fired synchronously per call — `componentDiscoveryPlugin` calls
-`sync()` once per discovered component within a single commit, and an
-earlier synchronous-notify design caused a real, observed feedback
-loop in Playground (the subscribing consumer, `InsightDebugPanel`, is
-itself part of the observed React tree, so each notification
-triggered a re-render, which triggered a new commit, which triggered
-more notifications). See `DECISIONS.md`, 2026-08-04.
+`markUnmounted()` call that actually mutates state — `sync()` itself
+only mutates state (and therefore only notifies) when something
+genuinely changed, per the dirty-check described above (`DECISIONS.md`,
+2026-08-23); a call that reports no render and no structural
+difference from what's already stored is a no-op that never reaches
+`scheduleNotify()`. Notifications that do fire are still batched via
+`queueMicrotask()` (a private `scheduleNotify()`), not fired
+synchronously per call — `componentDiscoveryPlugin` calls `sync()`
+once per discovered component within a single commit, and an earlier
+synchronous-notify design caused a real, observed feedback loop in
+Playground (the subscribing consumer, `InsightDebugPanel`, is itself
+part of the observed React tree, so each notification triggered a
+re-render, which triggered a new commit, which triggered more
+notifications). See `DECISIONS.md`, 2026-08-04.
+
+Neither the dirty-check nor the batching fully eliminates a
+self-observing consumer's feedback loop on their own: a consumer whose
+own re-render is itself a genuine, correctly-detected change (e.g. a
+debug panel using local state to force a refresh) will still be
+notified every time, because that really is new data. Closing that
+residual loop is a consumer-level concern, not a Registry contract —
+see `packages/playground/src/App.tsx`'s `InsightDebugPanel`, which
+excludes its own record from its refresh decision, and `DECISIONS.md`,
+2026-08-23.
 
 **Must not know**
 
@@ -1115,7 +1137,7 @@ and only these two are wired to `subscribe()`'s notifications.
 ## Cross-Layer Data Rules
 
 | Boundary                        | Model that crosses it                                                                              | Allowed below this boundary?                   |
-| ------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | React → Hook Adapter            | Raw React callback arguments                                                                       | No — never leaves Hook Adapter                 |
 | Hook Adapter → Fiber Adapter    | Internal runtime event (raw Fiber/FiberRoot ref)                                                   | No — never leaves Fiber Adapter                |
 | Fiber Adapter → Traversal       | Single Fiber entry point (`alternate`, `memoizedProps`, `memoizedState`, `dependencies`)           | No — never leaves Traversal                    |
@@ -1142,12 +1164,12 @@ tracked in `DECISIONS.md`:
 - `onPostCommitFiberRoot` — see 2026-07-18.
 - `ComponentRegistry` change-event emission through the Core event
   system — implemented, but not this way: `Insight.onChange()`
-  (2026-08-04) is backed by a self-contained `subscribe()` mechanism
-  local to `ComponentRegistry`, not Core's `mitt`-based event system.
-  `ComponentRegistry` has never depended on `Runtime` or any Core
-  type; routing through `PluginContext.emit()`/`on()` would have added
-  a new coupling with no benefit `sync()`/`markUnmounted()` need. See
-  `DECISIONS.md`, 2026-08-04.
+  (2026-08-04, hardened 2026-08-23) is backed by a self-contained
+  `subscribe()` mechanism local to `ComponentRegistry`, not Core's
+  `mitt`-based event system. `ComponentRegistry` has never depended on
+  `Runtime` or any Core type; routing through `PluginContext.emit()`/
+  `on()` would have added a new coupling with no benefit
+  `sync()`/`markUnmounted()` need. See `DECISIONS.md`, 2026-08-04.
 - `ComponentRegistry.getByRoot()` — no current consumer; discovery
   currently assumes a single root (see `DECISIONS.md`, 2026-07-18 —
   single React application per page).

@@ -1502,3 +1502,105 @@ single, simple test case can still hide a real bug that only a
 live, real-React-tree test in Playground exposes — unit tests alone,
 testing `ComponentRegistry` in isolation from any React tree, could
 not have surfaced this specific feedback-loop failure mode.
+
+## 2026-08-23
+
+### Fixed: Insight.onChange() unconditionally notified on every commit, and InsightDebugPanel's own refresh created a self-sustaining loop
+
+Two related but distinct bugs were found and fixed this session, both
+downstream of `Insight.onChange()` (2026-08-04).
+
+**Bug 1 — `ComponentRegistry.sync()` notified on every call, regardless
+of whether anything actually changed.**
+
+`componentDiscoveryPlugin`'s `onCommit` traverses the entire current
+fiber tree and calls `sync()` for every discovered component on every
+commit, regardless of whether that specific component actually
+rendered. `sync()` called `scheduleNotify()` unconditionally at the
+end of every call, so literally any commit anywhere in the observed
+tree — even one that changed nothing about a given component —
+notified every `onChange()` subscriber.
+
+Fix: `sync()` now compares the incoming `ComponentSyncInput` against
+the existing stored `ComponentNode` before writing or notifying. When
+`rendered` is `false` and `rootId`/`displayName`/`parentId`/`hooks`/
+`contexts` are all unchanged, `sync()` returns early without touching
+the map or scheduling a notification. Mounts and any `rendered: true`
+update continue to always notify, since those are genuine facts a
+consumer would see differently. `hooks`/`contexts` equality is
+checked via `JSON.stringify`, which is safe specifically because
+`previewHookValue()` guarantees a small, bounded, fully
+JSON-serializable shape (see `hookValuePreview.ts`, 2026-07-28) — this
+is not a general-purpose deep-equal.
+
+Regression tests added to `componentRegistry.test.ts`: no notify when
+nothing changed and `rendered: false`; still notifies when
+`rendered: true` even with unchanged structural fields; still
+notifies when only `hooks`/`contexts` differ despite `rendered: false`.
+
+**Bug 2 — `InsightDebugPanel` (Playground) created a self-sustaining
+refresh loop, independent of Bug 1.**
+
+`InsightDebugPanel` lives inside the same tree it observes. Its own
+`forceRefresh()` call is itself a real, tracked re-render: refresh ->
+commit -> the panel's own hook state (the refresh counter) changes ->
+`onChange()` fires again -> refresh -> ... Because this hook value
+genuinely changes on every cycle, `sync()` correctly reports
+`rendered: true` for the panel's own component every time — this is
+not something Bug 1's dirty-check can or should suppress, since a
+real, changing value is exactly what `onChange()` is supposed to
+report.
+
+A first attempt collapsed multiple `onChange()` notifications within a
+150ms window into a single `forceRefresh()` call. This stopped the
+browser hang (confirmed manually: rapid clicking no longer froze the
+tab), but manual testing proved the underlying loop never actually
+stopped — it only ran at a bounded rate: `InsightDebugPanel`'s own
+`renderCount` kept climbing during a 40-second idle period with zero
+user interaction (298 -> 364), and a single click produced 138
+renders of the panel before the browser was even touched again.
+
+Root fix: `InsightDebugPanel` now decides whether to call
+`forceRefresh()` based on a snapshot of `insight.getComponents()` that
+explicitly excludes its own record (`displayName !== "InsightDebugPanel"`).
+The panel's own row is still displayed normally in the rendered list
+(the list itself calls `getComponents()` unfiltered); it is only
+excluded from the "did anything worth refreshing for" comparison. This
+breaks the cycle: a refresh caused by the panel's own prior refresh no
+longer looks like a change from the filtered snapshot's perspective,
+so no further `forceRefresh()` is scheduled. An immediate catch-up
+call was also added on mount, since the very first commit's `sync()` /
+notify can fire (via `queueMicrotask`) before the panel's effect has
+had a chance to subscribe, which previously left the panel showing an
+empty list until some later, unrelated commit happened to trigger a
+refresh. The 150ms debounce was kept as a secondary rate cap.
+
+Verified manually in Playground for both fixes together: a single
+click now produces exactly 2 panel re-renders (the mount catch-up plus
+the real update) instead of 138; a 40-second idle period produces zero
+additional panel re-renders instead of continuous growth; 15 rapid
+clicks produce no hang and a panel render count that tracks actual
+commits rather than growing unboundedly; unmount/mount of `Greeting`
+still preserves component history correctly and notifies exactly once
+per genuine change.
+
+Files changed: `packages/react/src/internal/componentRegistry.ts`
+(`sameStructural()`, dirty-check in `sync()`),
+`packages/react/src/internal/componentRegistry.test.ts` (3 new
+regression tests), `packages/playground/src/App.tsx`
+(`InsightDebugPanel` rewritten to filter its own record out of the
+refresh decision, plus an immediate catch-up refresh on mount).
+
+Reason:
+
+Reinforces this project's standing pattern (see the `renderCount`
+overcounting saga, 2026-07-26, and the original `onChange()` feedback
+loop, 2026-08-04): a fix that looks correct against one test shape —
+here, "does it hang the browser" — can still hide a real, measurable
+bug (an infinite loop merely throttled to a survivable rate) that only
+a longer-duration, idle-period Playground test exposes. Bug 1 and Bug
+2 are recorded together because they were investigated together, but
+they are independent: Bug 1 is a general correctness fix benefiting
+every future `onChange()` consumer; Bug 2 is specific to a subscriber
+that lives inside its own observed tree, a pattern any future
+DevTools-style panel built on `onChange()` will need to account for.

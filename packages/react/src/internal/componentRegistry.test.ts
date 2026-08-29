@@ -293,5 +293,94 @@ it("increments renderCount only when rendered is true", () => {
     expect(listenerB).not.toHaveBeenCalled();
   });
 
+  
+  it("still notifies and updates rootId alone when rendered is false (the 'pending' rootId self-heal case)", async () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "pending", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: false, hooks: [], contexts: [] });
+    await flush();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(registry.get("app")?.rootId).toBe("root-1");
+  });
+
+  it("still notifies and updates displayName alone when rendered is false", async () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "AppRenamed", parentId: null, rendered: false, hooks: [], contexts: [] });
+    await flush();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(registry.get("app")?.displayName).toBe("AppRenamed");
+  });
+
+  it("still notifies and updates parentId alone when rendered is false", async () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    await flush();
+
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: "some-parent", rendered: false, hooks: [], contexts: [] });
+    await flush();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(registry.get("app")?.parentId).toBe("some-parent");
+  });
+
+  it("has() reports whether a component is currently tracked", () => {
+    const registry = new ComponentRegistry();
+
+    expect(registry.has("app")).toBe(false);
+
+    registry.register(createComponent("app"));
+
+    expect(registry.has("app")).toBe(true);
+  });
+
+  it("values() iterates every tracked component, including unmounted ones", () => {
+    const registry = new ComponentRegistry();
+
+    registry.register(createComponent("a"));
+    registry.register(createComponent("b"));
+    registry.markUnmounted("b");
+
+    const ids = Array.from(registry.values()).map((c) => c.id).sort();
+
+    expect(ids).toEqual(["a", "b"]);
+    expect(registry.get("b")?.status).toBe("unmounted");
+  });
+
+  it("returns false when unregistering an id that isn't tracked", () => {
+    const registry = new ComponentRegistry();
+
+    expect(registry.unregister("missing")).toBe(false);
+  });
+
+  it("documents current behavior: sync() on an already-unmounted id updates structural/render data but does not resurrect status", () => {
+    const registry = new ComponentRegistry();
+    registry.register(createComponent("app"));
+    registry.markUnmounted("app");
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+
+    const component = registry.get("app");
+    expect(component?.status).toBe("unmounted");
+    expect(component?.renderCount).toBe(2);
+  });
+
+  
+
 });
 

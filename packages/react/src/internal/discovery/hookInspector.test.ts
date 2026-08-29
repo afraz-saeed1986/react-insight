@@ -37,18 +37,18 @@ describe("inspectHooks", () => {
     expect(inspectHooks(fiber)).toEqual([{ index: 0, kind: "state", value: 0 }]);
   });
 
-  it("classifies a useRef-shaped hook as 'ref'", () => {
+ it("classifies a useRef-shaped hook as 'ref' and previews its current value", () => {
     const hook = hookNode({ current: null });
     const fiber = functionComponentFiber(chain(hook));
 
-    expect(inspectHooks(fiber)).toEqual([{ index: 0, kind: "ref" }]);
+    expect(inspectHooks(fiber)).toEqual([{ index: 0, kind: "ref", value: null }]);
   });
 
-  it("classifies a useMemo/useCallback-shaped hook as 'memo-like'", () => {
+  it("classifies a useMemo/useCallback-shaped hook as 'memo-like' and previews the memoized value, not the deps array", () => {
     const hook = hookNode([42, ["dep"]]);
     const fiber = functionComponentFiber(chain(hook));
 
-    expect(inspectHooks(fiber)).toEqual([{ index: 0, kind: "memo-like" }]);
+    expect(inspectHooks(fiber)).toEqual([{ index: 0, kind: "memo-like", value: 42 }]);
   });
 
   it("classifies an effect hook with the Passive tag bit as 'effect'", () => {
@@ -76,27 +76,53 @@ describe("inspectHooks", () => {
     expect(inspectHooks(fiber)).toEqual([{ index: 0, kind: "unknown" }]);
   });
 
-  it("preserves hook order across a multi-hook chain", () => {
+   it("preserves hook order across a multi-hook chain", () => {
     const stateHook = hookNode(0, { dispatch: () => {} });
     const refHook = hookNode({ current: null });
     const memoHook = hookNode([1, []]);
     const fiber = functionComponentFiber(chain(stateHook, refHook, memoHook));
 
-  expect(inspectHooks(fiber)).toEqual([
+    expect(inspectHooks(fiber)).toEqual([
       { index: 0, kind: "state", value: 0 },
-      { index: 1, kind: "ref" },
-      { index: 2, kind: "memo-like" },
+      { index: 1, kind: "ref", value: null },
+      { index: 2, kind: "memo-like", value: 1 },
     ]);
   });
 
-  it("includes a shallow value preview for state hooks, and no value for other kinds", () => {
+  it("includes a shallow value preview for state/ref/memo-like hooks, and no value for effect/layout-effect/unknown", () => {
     const stateHook = hookNode(42, { dispatch: () => {} });
-    const refHook = hookNode({ current: null });
-    const fiber = functionComponentFiber(chain(stateHook, refHook));
+    const refHook = hookNode({ current: "hello" });
+    const memoHook = hookNode(["memoized", []]);
+    const effectHook = hookNode({ tag: 9, create: () => {}, deps: null, next: null });
+    const unknownHook = hookNode("something-unexpected");
+    const fiber = functionComponentFiber(
+      chain(stateHook, refHook, memoHook, effectHook, unknownHook),
+    );
 
     expect(inspectHooks(fiber)).toEqual([
       { index: 0, kind: "state", value: 42 },
-      { index: 1, kind: "ref" },
+      { index: 1, kind: "ref", value: "hello" },
+      { index: 2, kind: "memo-like", value: "memoized" },
+      { index: 3, kind: "effect" },
+      { index: 4, kind: "unknown" },
+    ]);
+  });
+
+  it("previews a ref's object contents shallowly, not the { current } wrapper itself", () => {
+    const hook = hookNode({ current: { x: 1, y: 2 } });
+    const fiber = functionComponentFiber(chain(hook));
+
+    expect(inspectHooks(fiber)).toEqual([
+      { index: 0, kind: "ref", value: { __type: "object", keys: { x: 1, y: 2 } } },
+    ]);
+  });
+
+  it("previews a memo-like hook's computed value, ignoring the dependency array entirely", () => {
+    const hook = hookNode([{ total: 10 }, ["a", "b", "c"]]);
+    const fiber = functionComponentFiber(chain(hook));
+
+    expect(inspectHooks(fiber)).toEqual([
+      { index: 0, kind: "memo-like", value: { __type: "object", keys: { total: 10 } } },
     ]);
   });
 

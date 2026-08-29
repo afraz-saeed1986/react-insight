@@ -1469,3 +1469,202 @@ Next session:
   into `Runtime`, which uses `mitt` directly instead), and the absence
   of any actual CI workflow despite `DECISIONS.md`/`ARCHITECTURE.md`
   describing one as implemented and passing.
+
+## Session 22
+
+Completed:
+
+### Core Cleanup — Orphaned Event System Removed
+
+- Removed `packages/core/src/events/` (`EventBus.ts`, `IEventBus.ts`,
+  `Subscription.ts`, `SubscriptionRegistry.ts`, plus their tests) —
+  the "Known Gaps" item from `ROADMAP.md`. This was a fully
+  implemented, independently-tested internal event system, separate
+  from the `mitt`-based implementation actually wired into `Runtime`.
+  A repo-wide search confirmed zero references anywhere in production
+  code.
+- Verified before deletion, not just reasoned about: the folder was
+  first relocated outside `packages/core/src/` (so it fell outside
+  every `tsconfig`/`vitest` include pattern), and the full Quality
+  Gate was run and passed unchanged — empirically confirming nothing
+  in the live system depended on it.
+- Decision: removed rather than wired in, since `Runtime`'s existing
+  `mitt`-based event system already provides everything currently
+  needed.
+
+### Insight.onChange() — Reactive Change Notification API
+
+- Added `Insight.onChange(listener): () => void`, closing the
+  "reactive change API" candidate open since Session 15.
+  `ComponentRegistry` gained a self-contained `subscribe()`/notify
+  mechanism, independent of `@react-insight/core`'s event system.
+- Replaced Playground's `InsightDebugPanel` `setInterval` polling
+  (running since Session 16) with `insight.onChange()`.
+- Real bug found via Playground testing, not caught by unit tests: the
+  first implementation called `notify()` synchronously once per
+  `sync()`/`markUnmounted()` call. Since `onCommit` calls `sync()` once
+  per discovered component within a single commit, and
+  `InsightDebugPanel` is itself part of the observed tree, this
+  produced a self-reinforcing feedback loop — confirmed in the
+  browser: one click produced `renders: 52` and climbing.
+- Fixed with `ComponentRegistry.scheduleNotify()`, batching all
+  `notify()` calls within the same synchronous execution window into a
+  single `queueMicrotask()`-deferred notification via a `pendingNotify`
+  flag. A regression test was added reproducing the exact scenario.
+
+### Validation
+
+Full Quality Gate (lint, typecheck, build, test) verified and passed
+after both changes. Manual Quality Gate re-verification (relocate
+before delete) performed for the EventBus removal specifically.
+
+### Documentation
+
+Updated:
+
+- `DECISIONS.md` (EventBus removal, `onChange()` addition and the
+  synchronous-notify feedback-loop bug/fix)
+- `ROADMAP.md` (EventBus item moved out of Known Gaps; `onChange()`
+  candidate moved to completed)
+
+Current status:
+
+- The orphaned Core event system is gone; `Runtime` has a single event
+  implementation (`mitt`).
+- `Insight.onChange()` exists and is wired into Playground.
+- The microtask-batching fix stopped the _synchronous_ feedback loop
+  observed in initial testing, but this was later found (Session 23)
+  to have only throttled a deeper, still-unresolved loop rather than
+  fixed it — see Session 23.
+
+Next session:
+
+- Confirm GitHub Actions CI status directly against the repository.
+- Permanently delete the relocated EventBus folder once its temporary
+  relocation is no longer needed for reference.
+- Continue monitoring `InsightDebugPanel`'s `onChange()` behavior under
+  sustained/idle use — the fix above was validated only against a
+  single-click scenario.
+
+  ## Session 23
+
+Completed:
+
+### Insight.onChange() — Two Real Bugs Found and Fixed
+
+Continued directly from Session 22's `onChange()` work. The
+microtask-batching fix from Session 22 stopped the _synchronous_
+feedback loop, but this session found a deeper, independent problem
+underneath it. See `DECISIONS.md`, 2026-08-23, for full details.
+
+**Bug 1 — `ComponentRegistry.sync()` notified unconditionally.**
+`componentDiscoveryPlugin`'s `onCommit` calls `sync()` for every
+discovered component on every commit, regardless of whether that
+component actually rendered. `sync()` called `scheduleNotify()` on
+every call with no dirty-check, so any commit anywhere in the observed
+tree notified every `onChange()` subscriber, even when nothing about
+a given component had changed. Fixed by adding a structural
+comparison (`sameStructural()`) against the existing stored state:
+`sync()` now skips both the write and the notification when
+`rendered` is `false` and `rootId`/`displayName`/`parentId`/`hooks`/
+`contexts` are all unchanged. Three regression tests added to
+`componentRegistry.test.ts`.
+
+**Bug 2 — `InsightDebugPanel` created a self-sustaining refresh loop,
+independent of Bug 1.** `InsightDebugPanel` lives inside the tree it
+observes, so its own `forceRefresh()` call is itself a real, tracked
+re-render, correctly reported as `rendered: true` every time — Bug 1's
+dirty-check cannot and should not suppress this, since it is a
+genuine change. A first attempt (150ms debounce, collapsing bursts of
+notifications into one `forceRefresh()`) stopped the browser hang but
+was proven — via a longer manual Playground test, not assumed — to
+never actually stop the loop: `renderCount` kept climbing during a
+40-second idle period with zero user interaction (298 -> 364 renders),
+and a single click produced 138 panel renders. Root fix:
+`InsightDebugPanel` now decides whether to refresh based on a snapshot
+of `getComponents()` that explicitly excludes its own record, breaking
+the cycle at its source rather than only throttling it. An immediate
+catch-up refresh on mount was also added, fixing a related issue found
+during testing: the panel could render an empty list until some later,
+unrelated commit happened to trigger a refresh, since the first
+commit's notify can fire via `queueMicrotask` before the panel's
+effect has subscribed.
+
+### Validation
+
+Full Quality Gate (lint, typecheck, build, test) on `@react-insight/react`
+verified and passed by the developer after each iteration of both
+fixes. Manual end-to-end validation in Playground performed across
+multiple rounds, each round disproving the previous fix's completeness
+before the final version:
+
+- Initial load: component list confirmed populated correctly (via
+  manual "Refresh snapshot") before the catch-up-refresh fix, isolating
+  that issue from the loop fix itself.
+- 15 rapid clicks: no browser hang; `InsightDebugPanel` render count
+  climbed with the debounce-only fix (160 after 15 clicks) but was
+  still shown to be an unbounded loop by the next two checks.
+- One additional click + 40s idle (debounce-only fix): `renderCount`
+  for `InsightDebugPanel` grew from 160 -> 298 -> 364 with zero
+  additional user interaction, proving the loop was only throttled,
+  not fixed.
+- Same sequence after the self-exclusion fix: a single click produced
+  exactly 2 panel renders (catch-up + real update, down from 138); a
+  40-second idle period produced zero additional renders (flat at 2,
+  down from continuous growth); 15 rapid clicks produced no hang and a
+  render count (16) that tracked real commits.
+- Unmount/mount of `Greeting` re-verified after the final fix: history
+  preserved correctly (`status: unmounted` retained, not deleted),
+  `renderCount` increments matched the number of genuine structural
+  changes, no unbounded growth introduced.
+
+### Documentation
+
+Updated:
+
+- `DECISIONS.md` (new entry: both bugs, the disproven intermediate
+  debounce-only fix, the final self-exclusion fix, and the full
+  manual-validation evidence)
+- `SESSION_LOG.md` (this entry, plus a backfilled Session 22 entry —
+  see below)
+
+**Documentation process note:** `SESSION_LOG.md` was found to be
+missing an entry for the EventBus-removal/`onChange()`-addition work
+already recorded in `DECISIONS.md` under 2026-08-04 — the log stopped
+at Session 21. A Session 22 entry was backfilled from that
+`DECISIONS.md` content before adding this Session 23 entry, so the
+log's numbering matches the actual decision history. No decision was
+changed as a result, matching the same kind of correction already made
+once before in Session 21.
+
+Current status:
+
+- `Insight.onChange()` is now verified to notify exactly when
+  something meaningful actually changed, with no spurious
+  unrelated-commit notifications.
+- Playground's `InsightDebugPanel` no longer hangs the browser and no
+  longer loops indefinitely — confirmed by an idle-period test showing
+  flat render counts, not just the absence of a freeze.
+- `componentRegistry` test coverage was extended as part of this fix
+  (3 new tests) but a full dedicated coverage review remains a
+  separate, not-yet-done item.
+- GitHub Actions CI status and the leftover
+  `packages/_core_src_archive_events` cleanup remain open and were not
+  addressed this session.
+
+Next session:
+
+- Confirm GitHub Actions CI is actually present and passing on the
+  remote (a discrepancy was noticed this session: no
+  `.github/workflows/ci.yml` was found in the inspected project
+  snapshot — needs verification directly against the repository, not
+  just documentation).
+- Permanently delete `packages/_core_src_archive_events` once
+  confirmed safe (the relocate-before-delete verification step from
+  2026-08-04 was completed; the folder itself was never actually
+  deleted).
+- Complete the `componentRegistry` test coverage review.
+- Choose the next roadmap item from `PROJECT_CONTEXT.md`'s Current
+  Focus (root-container correlation, on-demand hook value/name
+  resolution, extending value preview to `ref`/`memo-like` hooks, or
+  Phase 3 Inspector groundwork).

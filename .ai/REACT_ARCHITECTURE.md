@@ -237,7 +237,8 @@ __REACT_DEVTOOLS_GLOBAL_HOOK__
         ▼
   traverse()  — rootId falls back to "pending" if no root
                is registered yet (self-heals on the next commit,
-               since sync() updates rootId unconditionally)
+               since sync() updates rootId whenever it differs
+               from what's stored)
         │
         ▼
   mapDiscoveredComponent()
@@ -266,7 +267,7 @@ disconnect() — restores previous hook callbacks
 
 A React effect always runs _after_ the commit that triggers it. An effect-based registration (the original design, via a `useComponentDiscovery()` hook mirroring `useRootLifecycle`) therefore structurally cannot observe the very first commit of the tree it lives inside — confirmed empirically: `onCommitFiberRoot` never fired on a page's initial render under that design. Root lifecycle doesn't have this problem because it only needs to know "a Provider mounted", which the effect running is itself sufficient evidence of; Component Discovery needs to observe actual commits, including the first one. See `DECISIONS.md`, 2026-07-21.
 
-Because discovery now connects before any root is necessarily registered (root registration is still effect-based), `onCommit` no longer bails out when `RootRegistry` is empty. Components discovered before a root registers are tagged with a `"pending"` `rootId`; the next real commit self-heals this once the real root registers (`ComponentRegistry.sync()` already updates `rootId` unconditionally on every commit).
+Because discovery now connects before any root is necessarily registered (root registration is still effect-based), `onCommit` no longer bails out when `RootRegistry` is empty. Components discovered before a root registers are tagged with a `"pending"` `rootId`; the next real commit self-heals this once the real root registers (`ComponentRegistry.sync()` already updates `rootId` whenever it differs from what's stored, on every commit).
 
 ### Hook connection requires two things, not one
 
@@ -278,7 +279,7 @@ Architectural boundary: no type whose name or shape depends on React Fiber cross
 
 Unmount handling marks the component record as unmounted (`status: "unmounted"`, `unmountedAt: <timestamp>`) rather than removing it from the registry, preserving its history for future consumers such as Timeline or Inspector. See `DECISIONS.md`, 2026-07-19.
 
-Render Tracking uses the Fiber `current`/`alternate` machinery for two separate purposes, resolved together by `resolveFiberIdentity()`: a stable **id** (a direct or `alternate` WeakMap hit reuses the existing id; no hit at all means first mount, minting a new one), and a **`rendered` verdict**, which is _not_ derived from which hit occurred. React recycles at most two Fiber objects per component indefinitely, so object identity alone is only a reliable "unchanged" signal for a component's first update — the same object reference reappears as `current` again on every second-and-later real update, and comparing against `alternate` goes stale once a component stops receiving real updates while the rest of the tree keeps committing. Instead, `rendered` compares the incoming `memoizedProps`/`memoizedState` against a self-maintained `lastObservedValues` map (keyed by the stable id, updated on every resolution), so every check is relative to "changed since the last time this id was seen" rather than to a potentially-stale Fiber object. `DiscoveredComponent.rendered` carries this signal through to `ComponentNode.renderCount` / `lastRenderedAt`. See `DECISIONS.md`, 2026-07-20 and 2026-07-26.
+Render Tracking uses the Fiber `current`/`alternate` machinery for two separate purposes, resolved together by `resolveFiberIdentity()`: a stable **id** (a direct or `alternate` WeakMap hit reuses the existing id; no hit at all means first mount, minting a new id), and a **`rendered` verdict**, which is _not_ derived from which hit occurred. React recycles at most two Fiber objects per component indefinitely, so object identity alone is only a reliable "unchanged" signal for a component's first update — the same object reference reappears as `current` again on every second-and-later real update, and comparing against `alternate` goes stale once a component stops receiving real updates while the rest of the tree keeps committing. Instead, `rendered` compares the incoming `memoizedProps`/`memoizedState` against a self-maintained `lastObservedValues` map (keyed by the stable id, updated on every resolution), so every check is relative to "changed since the last time this id was seen" rather than to a potentially-stale Fiber object. `DiscoveredComponent.rendered` carries this signal through to `ComponentNode.renderCount` / `lastRenderedAt`. See `DECISIONS.md`, 2026-07-20 and 2026-07-26.
 
 This closes what was previously documented here as a known accuracy limitation: React clones (assigns a new Fiber object to) every ancestor and sibling along the reconciliation path down to an actually-updated component, even when their own function body bailed out (didn't re-execute); the props/state comparison correctly reports these as not rendered regardless of the object-identity churn. Root-level `RootRegistry.commitCount` was never affected by any version of this, since it doesn't depend on Fiber identity. See `DECISIONS.md`, 2026-07-26, for the two intermediate regressions (each caught only by a differently-shaped real-browser Playground test) that the final design had to survive.
 
@@ -354,7 +355,7 @@ Responsibilities:
 - Internal root lifecycle infrastructure
 - Internal lifecycle plugins
 - RootRegistry (including commit counting)
-- ComponentRegistry (including render tracking, structural hook tracking, structural context tracking, and unmount history)
+- ComponentRegistry (including render tracking, structural hook tracking, structural context tracking, unmount history, and change notification via `subscribe()`/`Insight.onChange()`)
 - Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector)
 - Internal Component Discovery plugin, registered eagerly from `createInsight()`
 - Future React-specific features
@@ -491,6 +492,7 @@ Responsibilities:
 - Hide Runtime implementation details.
 - Delegate Runtime operations.
 - Expose `getComponents()` (maps `ComponentNode` → public `ComponentSnapshot`).
+- Expose `onChange(listener)`, delegating to `ComponentRegistry.subscribe()`.
 - Return the public API.
 
 ---
@@ -532,7 +534,8 @@ Stores the internal representation of mounted React components. It is the sole o
 Responsibilities:
 
 - Register components (`register()`, throws on duplicate id — used where a duplicate is a genuine error).
-- Synchronize discovered components without throwing on an existing id (`sync()` — decides mount vs. update by comparing against existing state; updates `rootId`/`displayName`/`parentId`/`hooks`/`contexts` unconditionally on every call, which is what allows the discovery pipeline's `"pending"`-rootId fallback to self-heal for free).
+- Synchronize discovered components without throwing on an existing id (`sync()` — decides mount vs. update by comparing against existing state; when an update genuinely changes something — either `rendered: true`, or any of `rootId`/`displayName`/`parentId`/`hooks`/`contexts` differing from what's stored — updates those fields and schedules a notification; otherwise the call is a no-op. Structural fields updating whenever they differ, not only when `rendered` is `true`, is what still allows the discovery pipeline's `"pending"`-rootId fallback to self-heal for free. See `DECISIONS.md`, 2026-08-23.)
+- Notify subscribers of meaningful changes (`subscribe()`/`scheduleNotify()`), batched via `queueMicrotask()`, wired into `sync()` and `markUnmounted()`, backing `Insight.onChange()`. See `DECISIONS.md`, 2026-08-04 and 2026-08-23.
 - Unregister components (`unregister()` — hard removal), or mark them unmounted while preserving their history (`markUnmounted()` — sets `status: "unmounted"` and `unmountedAt`, keeps the record).
 - Lookup components.
 - Maintain framework-agnostic component state (`status`, `mountedAt`, `unmountedAt`, `renderCount`, `lastRenderedAt`, `hooks`, `contexts`).
@@ -696,7 +699,7 @@ Current test coverage includes:
 - `useInsight()`
 - `useInsightLifecycle()` under real React `<StrictMode>` rendering (register/unregister serialization — no console errors, registry ends up correctly populated)
 - `RootRegistry`, including `recordCommit()`
-- `ComponentRegistry` (`sync()` mount/update behavior, `markUnmounted()`, render-count accounting only incrementing when `rendered: true`, `hooks`/`contexts` updated unconditionally like other structural fields)
+- `ComponentRegistry` (`sync()` mount/update behavior, `markUnmounted()`, render-count accounting only incrementing when `rendered: true`, `hooks`/`contexts` updated whenever they differ from stored state, `subscribe()`/`onChange()` notification — including the dirty-check that skips notifying when nothing actually changed)
 - Root Lifecycle Plugin
 - Component Discovery Plugin (commit/sync, commits that precede root registration — `"pending"` rootId and self-heal on the next commit, unmount via `markUnmounted()`, disconnect on destroy)
 - Provider lifecycle integration

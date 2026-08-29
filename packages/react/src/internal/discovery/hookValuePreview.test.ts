@@ -95,4 +95,28 @@ describe("previewHookValue", () => {
 
     expect(Object.keys((result as unknown as { keys: object }).keys)).toHaveLength(20);
   });
+
+  
+  it("truncates long strings instead of embedding them verbatim", () => {
+    const long = "x".repeat(500);
+    const result = previewHookValue(long) as string;
+
+    expect(result.length).toBeLessThan(500);
+    expect(result.startsWith("x".repeat(200))).toBe(true);
+    expect(result).toContain("500 chars total");
+  });
+
+  it("leaves short strings unchanged", () => {
+    expect(previewHookValue("hello")).toBe("hello");
+  });
+
+  it("truncates long strings nested inside an object, not just at the top level", () => {
+    const long = "y".repeat(300);
+        const result = previewHookValue({ big: long }) as unknown as { keys: { big: string } };
+
+    expect(result.keys.big.length).toBeLessThan(300);
+    expect(result.keys.big).toContain("300 chars total");
+  });
+
+
 });
