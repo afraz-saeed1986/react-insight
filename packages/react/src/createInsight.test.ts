@@ -55,6 +55,32 @@ it("discovers components as soon as a commit happens, without any InsightProvide
     expect(components[0]).toMatchObject({ displayName: "App", parentId: null });
   });
 
+  
+  it("returns undefined from getComponent() for an unknown id", () => {
+    const insight = createInsight();
+
+    expect(insight.getComponent("does-not-exist")).toBeUndefined();
+  });
+
+  it("getComponent() returns the exact same snapshot getComponents() returns for that id", () => {
+    const insight = createInsight();
+
+    const hook = (globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: {
+      onCommitFiberRoot?: (rendererId: number, root: unknown) => void;
+    } }).__REACT_DEVTOOLS_GLOBAL_HOOK__;
+
+    function App() { return null; }
+    const appFiber = { type: App, child: null, sibling: null, alternate: null };
+
+    hook?.onCommitFiberRoot?.(1, { current: appFiber });
+
+    const [discovered] = insight.getComponents();
+    expect(discovered).toBeDefined();
+
+    expect(insight.getComponent(discovered!.id)).toEqual(discovered);
+  });
+  
+
   it("notifies onChange listeners when a real commit discovers a component", async () => {
     const insight = createInsight();
 

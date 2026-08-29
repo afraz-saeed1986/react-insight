@@ -2,10 +2,31 @@ import { Runtime } from "@react-insight/core";
 
 import type { InternalInsight } from "./internal/runtime";
 import { runtimeSymbol } from "./internal/runtime";
-import type { Insight } from "./types";
+import type { Insight, ComponentSnapshot } from "./types";
+import type { ComponentNode } from "./internal/component";
 import { RootRegistry } from "./internal/rootRegistry";
 import { ComponentRegistry } from "./internal/componentRegistry";
 import { createComponentDiscoveryPlugin } from "./internal/plugins/componentDiscoveryPlugin";
+
+/**
+ * Maps the internal ComponentNode shape to the public, decoupled
+ * ComponentSnapshot contract. Shared by getComponents() and
+ * getComponent() so the mapping is defined in exactly one place.
+ */
+function toSnapshot(component: ComponentNode): ComponentSnapshot {
+  return {
+    id: component.id,
+    displayName: component.displayName,
+    parentId: component.parentId,
+    status: component.status,
+    renderCount: component.renderCount,
+    mountedAt: component.mountedAt,
+    lastRenderedAt: component.lastRenderedAt,
+    unmountedAt: component.unmountedAt,
+    hooks: component.hooks,
+    contexts: component.contexts,
+  };
+}
 
 export function createInsight(): Insight {
   const runtime = new Runtime();
@@ -46,19 +67,13 @@ runtime
       return runtime.destroy();
     },
 
-getComponents() {
-      return [...componentRegistry.values()].map((component) => ({
-        id: component.id,
-        displayName: component.displayName,
-        parentId: component.parentId,
-        status: component.status,
-        renderCount: component.renderCount,
-        mountedAt: component.mountedAt,
-        lastRenderedAt: component.lastRenderedAt,
-        unmountedAt: component.unmountedAt,
-        hooks: component.hooks,
-        contexts: component.contexts,
-      }));
+    getComponents() {
+      return [...componentRegistry.values()].map(toSnapshot);
+    },
+
+    getComponent(id) {
+      const component = componentRegistry.get(id);
+      return component ? toSnapshot(component) : undefined;
     },
 
     unregisterPlugin(name) {

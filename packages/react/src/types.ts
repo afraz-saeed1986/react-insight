@@ -62,11 +62,21 @@ export interface Insight {
 
   destroy(): Promise<void>;
 
-  /**
+   /**
    * Returns a read-only snapshot of every currently tracked component
    * (mounted and unmounted).
    */
   getComponents(): ReadonlyArray<ComponentSnapshot>;
+
+  /**
+   * Returns a read-only snapshot of a single tracked component by id,
+   * or undefined if no component with that id is currently tracked
+   * (mounted or unmounted). Equivalent to filtering getComponents()
+   * for a single id, but O(1) instead of scanning every component —
+   * intended for consumers that already know which component they
+   * want (e.g. a future Inspector selecting one row for detail view).
+   */
+  getComponent(id: string): ComponentSnapshot | undefined;
 
   /**
    * Subscribes to changes in tracked component state (mount, update,
