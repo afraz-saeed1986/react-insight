@@ -6,6 +6,7 @@ import { asFiberNode, getFiberTraversalEntry } from "../discovery/fiberAdapter";
 import { mapDiscoveredComponent } from "../discovery/componentMapper";
 import { getFiberId, traverse } from "../discovery/traversal";
 import { connectHookAdapter } from "../discovery/hookAdapter";
+import { deleteFiberHandle } from "../discovery/fiberHandleRegistry";
 
 export interface ComponentDiscoveryPluginOptions {
   readonly rootRegistry: RootRegistry;
@@ -63,12 +64,17 @@ export function createComponentDiscoveryPlugin(
           }
         },
 
-        onUnmount(fiber) {
+             onUnmount(fiber) {
           const node = asFiberNode(fiber);
 
           if (!node) return;
 
-          options.componentRegistry.markUnmounted(getFiberId(node));
+          const id = getFiberId(node);
+          options.componentRegistry.markUnmounted(id);
+          // Bounds fiberHandleRegistry's memory: without this, every
+          // unmounted component's Fiber (and everything it closes
+          // over) would be retained forever. See fiberHandleRegistry.ts.
+          deleteFiberHandle(id);
         },
       });
     },

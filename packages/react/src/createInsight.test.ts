@@ -79,7 +79,7 @@ it("discovers components as soon as a commit happens, without any InsightProvide
 
     expect(insight.getComponent(discovered!.id)).toEqual(discovered);
   });
-  
+
 
   it("notifies onChange listeners when a real commit discovers a component", async () => {
     const insight = createInsight();
@@ -125,4 +125,12 @@ it("discovers components as soon as a commit happens, without any InsightProvide
     expect(listener).not.toHaveBeenCalled();
   });
 
+});
+
+describe("inspectHookNames", () => {
+  it("returns undefined for an unknown id", () => {
+    const insight = createInsight();
+
+    expect(insight.inspectHookNames("does-not-exist")).toBeUndefined();
+  });
 });

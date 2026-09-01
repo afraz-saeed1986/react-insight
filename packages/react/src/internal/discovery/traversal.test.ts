@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { traverse, getFiberId } from "./traversal";
 import type { FiberNode } from "./fiberAdapter";
+import { getFiberHandle } from "./fiberHandleRegistry";
 
 function App() {}
 function Header() {}
@@ -189,5 +190,14 @@ it("marks an updated fiber as rendered when its props or state actually changed"
     expect(laterCommit3[0]!.rendered).toBe(false);
   });
 
+  
+  it("records a fiber handle for every discovered component", () => {
+    const appFiber = fiber(App);
+
+    const [discovered] = traverse(appFiber, "root-1");
+    expect(discovered).toBeDefined();
+
+    expect(getFiberHandle(discovered!.id)).toBe(appFiber);
+  });
 
 });

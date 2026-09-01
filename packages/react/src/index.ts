@@ -3,4 +3,4 @@ export { InsightProvider } from "./InsightProvider";
 export { useInsight } from "./hooks";
 export { installReactDevtoolsHook } from "./internal/discovery/hookAdapter";
 
-export type { Insight, ComponentSnapshot } from "./types";
+export type { Insight, ComponentSnapshot, InspectedHookName } from "./types";

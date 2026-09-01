@@ -6,6 +6,13 @@ export interface FiberNode {
   memoizedProps: unknown;
   memoizedState: unknown;
   dependencies: unknown;
+  /**
+   * Optional (not required) purely so every existing fixture across
+   * the discovery test suite keeps compiling unmodified — real Fiber
+   * objects always have this set. Only hookNameInspector.ts reads it
+   * (needed to re-invoke fiber.type(fiber.pendingProps)).
+   */
+  pendingProps?: unknown;
 }
 
 export interface HookNode {

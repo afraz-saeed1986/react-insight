@@ -2,6 +2,7 @@ import type { FiberNode } from "./fiberAdapter";
 import type { DiscoveredComponent } from "./discoveredComponent";
 import { inspectHooks } from "./hookInspector";
 import { inspectContexts } from "./contextInspector";
+import { setFiberHandle } from "./fiberHandleRegistry";
 
 const fiberIds = new WeakMap<FiberNode, string>();
 const lastObservedValues = new Map<string, { props: unknown; state: unknown }>();
@@ -103,12 +104,12 @@ export function traverse(
     const isComponent = isComponentFiber(fiber);
     let nextParentId = parentId;
 
-    if (isComponent) {
+ if (isComponent) {
       const { id, rendered } = resolveFiberIdentity(fiber);
       nextParentId = id;
+      setFiberHandle(id, fiber);
 
-
-     result.push({
+      result.push({
         id,
         rootId,
         displayName: getDisplayName(fiber),

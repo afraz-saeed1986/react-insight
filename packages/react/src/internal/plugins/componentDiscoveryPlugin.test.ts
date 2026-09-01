@@ -5,7 +5,7 @@ import { ComponentRegistry } from "../componentRegistry";
 import { createInternalRoot } from "../root";
 import { RootRegistry } from "../rootRegistry";
 import { createComponentDiscoveryPlugin } from "./componentDiscoveryPlugin";
-
+import { getFiberHandle } from "../discovery/fiberHandleRegistry";
 /**
  * Minimal shape of `__REACT_DEVTOOLS_GLOBAL_HOOK__` needed for these
  * tests. Mirrors the (unexported) shape connectHookAdapter() installs,
@@ -179,6 +179,27 @@ it("syncs discovered components into the registry on commit", async () => {
     getInstalledHook().onCommitFiberRoot?.(1, { current: updateFiber });
 
     expect(getOnlyComponent(componentRegistry).rootId).toBe(String(root.id));
+  });
+
+  
+  it("clears the fiber handle on unmount", async () => {
+    const rootRegistry = new RootRegistry();
+    const componentRegistry = new ComponentRegistry();
+    rootRegistry.register(createInternalRoot());
+
+    const plugin = createComponentDiscoveryPlugin({ rootRegistry, componentRegistry });
+    await plugin.setup({ emit() {}, on: () => () => {} });
+
+    const appFiber = createFiber("App");
+    const hook = getInstalledHook();
+    hook.onCommitFiberRoot?.(1, { current: appFiber });
+
+    const id = getOnlyComponent(componentRegistry).id;
+    expect(getFiberHandle(id)).toBeDefined();
+
+    hook.onCommitFiberUnmount?.(1, appFiber);
+
+    expect(getFiberHandle(id)).toBeUndefined();
   });
 
 

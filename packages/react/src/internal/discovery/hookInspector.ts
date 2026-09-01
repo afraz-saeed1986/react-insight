@@ -46,7 +46,7 @@ const EFFECT_TAG_PASSIVE = 0b1000;
  * render-detection, but does matter here: a class component's
  * `memoizedState` is `this.state`, not a hooks linked list.
  */
-function isClassComponentType(type: unknown): boolean {
+export function isClassComponentType(type: unknown): boolean {
   if (typeof type !== "function") {
     return false;
   }

@@ -7,6 +7,9 @@ import type { ComponentNode } from "./internal/component";
 import { RootRegistry } from "./internal/rootRegistry";
 import { ComponentRegistry } from "./internal/componentRegistry";
 import { createComponentDiscoveryPlugin } from "./internal/plugins/componentDiscoveryPlugin";
+import { getFiberHandle } from "./internal/discovery/fiberHandleRegistry";
+import { resolveHookNames } from "./internal/discovery/hookNameInspector";
+import { getCurrentDispatcherRef } from "./internal/discovery/dispatcherAccess";
 
 /**
  * Maps the internal ComponentNode shape to the public, decoupled
@@ -82,6 +85,16 @@ runtime
 
     onChange(listener) {
       return componentRegistry.subscribe(listener);
+    },
+
+    inspectHookNames(id) {
+      const fiber = getFiberHandle(id);
+      if (!fiber) return undefined;
+
+      const dispatcherRef = getCurrentDispatcherRef();
+      if (!dispatcherRef) return undefined;
+
+      return resolveHookNames(fiber, dispatcherRef);
     },
   };
 

@@ -89,5 +89,36 @@ export interface Insight {
    *
    * Returns an unsubscribe function.
    */
-  onChange(listener: () => void): () => void;
+    onChange(listener: () => void): () => void;
+
+  /**
+   * On-demand only — never call this automatically or on every
+   * commit. Re-invokes the component's function with an instrumented
+   * dispatcher to resolve exact hook names (e.g. distinguishing
+   * useState from useReducer, which are structurally identical) and
+   * the nearest enclosing custom hook name, if any.
+   *
+   * This genuinely RE-EXECUTES the component's render body. If that
+   * body has real side effects, they run again — call this only in
+   * response to an explicit inspection request, never automatically.
+   *
+   * Returns undefined if: the component isn't currently tracked, it
+   * isn't a plain function component (memo/forwardRef/class aren't
+   * supported in this slice), or hook name resolution isn't available
+   * in this environment (e.g. a production React build).
+   *
+   * Custom hook name resolution degrades under minified production
+   * builds, since it reads real function names from the call stack.
+   */
+  inspectHookNames(id: string): ReadonlyArray<InspectedHookName> | undefined;
+}
+
+/**
+ * A single hook's on-demand-resolved name, from Insight.inspectHookNames().
+ * See that method's documentation for what this can and cannot recover.
+ */
+export interface InspectedHookName {
+  readonly index: number;
+  readonly hookName: string;
+  readonly customHookName?: string;
 }
