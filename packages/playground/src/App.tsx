@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInsight } from "@react-insight/react";
+import { inspectComponent } from "@react-insight/inspector";
+import type { ComponentInspection } from "@react-insight/inspector";
 
 function Display({ count }: { count: number }) {
   return <p>Count: {count}</p>;
@@ -21,9 +23,14 @@ function Greeting() {
 }
 
 function InsightDebugPanel() {
-  const insight = useInsight();
+const insight = useInsight();
   const [, forceRefresh] = useState(0);
   const lastSnapshotRef = useRef<string | null>(null);
+  const [inspection, setInspection] = useState<ComponentInspection | null>(null);
+
+  const handleInspect = (id: string) => {
+    setInspection(inspectComponent(insight, id) ?? null);
+  };
 
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -62,7 +69,8 @@ function InsightDebugPanel() {
       <ul>
         {insight.getComponents().map((c) => (
           <li key={c.id}>
-            {c.displayName} — status: {c.status}, renders: {c.renderCount}
+            {c.displayName} — status: {c.status}, renders: {c.renderCount}{" "}
+            <button onClick={() => handleInspect(c.id)}>Inspect</button>
           {c.hooks.length > 0 && (
               <span>
                 {" — hooks: ["}
@@ -90,6 +98,20 @@ function InsightDebugPanel() {
           </li>
         ))}
       </ul>
+      {inspection && (
+        <div style={{ marginTop: 12, border: "1px solid #ccc", padding: 8 }}>
+          <div>
+            <strong>Inspecting:</strong> {inspection.snapshot.displayName}{" "}
+            <button onClick={() => setInspection(null)}>Close</button>
+          </div>
+          <div>
+            <strong>hookNames:</strong>{" "}
+            {inspection.hookNames
+              ? JSON.stringify(inspection.hookNames)
+              : "unavailable (not a plain function component, or React internals not accessible here)"}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -121,10 +143,6 @@ export function App() {
       </button>
       {showGreeting && <Greeting />}
       <InsightDebugPanel />
-
-      {/* <ThemeContext.Provider value="dark">
-            <ContextProbe />
-      </ThemeContext.Provider> */}
     </div>
   );
 }

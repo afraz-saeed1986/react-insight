@@ -23,33 +23,42 @@ typecheck, build, test, coverage thresholds).
 
 ### Phase 2 — React Integration
 
-**Status: Active.**
+**Status: Complete.**
 
 React lifecycle integration, Component Discovery (mount/update/unmount),
-Render Tracking, structural Hook Tracking, structural Context Tracking,
-and a public read API (`getComponents()`) are all implemented, tested,
-and validated end-to-end against a real React application via
-Playground. See "Completed" below for the full list.
-
-The next slice of Phase 2 work has not been chosen yet — see "Current
-Priorities" below.
+fully-accurate Render Tracking, structural Hook Tracking (including
+value previews across `state`/`ref`/`memo-like` kinds), structural
+Context Tracking, a public read API (`getComponents()`/`getComponent()`),
+and a reactive `onChange()` API are all implemented, tested, and
+validated end-to-end against a real React application via Playground.
+See "Completed" below for the full list. No open items remain in this
+phase's original scope; remaining candidates once listed here
+(root-container correlation, `getByRoot()`) had no real consumer and
+are tracked instead under "Deferred, No Current Consumer" below.
 
 ### Phase 3 — Inspector
 
-**Status: Not started.**
+**Status: Active.**
 
-Depends on Phase 2's Component/Render/Hook/Context Tracking data, which
-is now stable. No concrete design exists yet. Candidate work includes
-on-demand hook name resolution and the Inspector/DevTools panel itself
-— see "Longer-Term Goals" below.
+Began 2026-08-24 with its first slice: on-demand hook name resolution
+(`Insight.inspectHookNames()`) and the new `@react-insight/inspector`
+package. This was the only Phase 3 candidate with existing design
+groundwork (the technique itself was identified and deliberately
+deferred back on 2026-07-27). Timeline, a real DevTools panel, and
+Session management remain without a concrete design — see "Longer-Term
+Goals" below.
 
 ---
 
 ## Completed (by capability, not session)
 
-- Core Runtime, plugin lifecycle, built-in Logger Plugin, Quality Gate,
-  CI-workflow configuration claims (see "Known Gaps" below — the CI
-  claim itself is currently inaccurate).
+- Core Runtime, plugin lifecycle, built-in Logger Plugin, Quality Gate.
+- `.github/workflows/ci.yml` — a real, verified-passing GitHub Actions
+  CI workflow (lint, typecheck, build, test, core-only coverage, Node
+  22/24 matrix), closing the "Known Gap" below where earlier
+  documentation had claimed this was implemented and passing without
+  an actual workflow file existing in the repository. See
+  `DECISIONS.md`, 2026-08-24.
 - `@react-insight/react` public API: `createInsight()`, `InsightProvider`,
   `useInsight()`, `installReactDevtoolsHook()`.
 - React root lifecycle integration (effect-based, StrictMode-safe
@@ -60,13 +69,19 @@ on-demand hook name resolution and the Inspector/DevTools panel itself
   detection (accurate against cloned/bailed-out fibers and Fiber
   recycling — no known accuracy limitations remain).
 - Structural Hook Tracking (`inspectHooks()`), including a shallow value
-  preview for `state`-kind hooks.
+  preview for `state`, `ref`, and `memo-like` kind hooks (extended from
+  `state`-only on 2026-08-24).
+- `previewHookValue()`'s string-length cap (`MAX_STRING_LENGTH = 200`),
+  added 2026-08-24 alongside the `ref`/`memo-like` extension above,
+  after Playground surfaced a real unbounded-string case.
 - Structural Context Tracking (`inspectContexts()`), including
   `displayName` resolution, deduplication, and value preview reuse.
-  Full unit-test coverage (`contextInspector.test.ts`) as of the most
-  recent session.
+  Full unit-test coverage (`contextInspector.test.ts`).
 - `Insight.getComponents()` public read API (`ComponentSnapshot`),
   actually exported from the package's public entry point.
+- `Insight.getComponent(id)` — single-component, O(1) counterpart to
+  `getComponents()`, added 2026-08-24 as a justified building block for
+  `inspectHookNames()` and `@react-insight/inspector` (below).
 - `Insight.onChange(listener)` reactive change-notification API,
   backed by a self-contained `ComponentRegistry.subscribe()` mechanism
   (not the Core event system), replacing Playground's polling
@@ -74,14 +89,31 @@ on-demand hook name resolution and the Inspector/DevTools panel itself
   gated by a structural dirty-check in `sync()`, so subscribers are
   only notified when something actually changed (see `DECISIONS.md`,
   2026-08-04 and 2026-08-23).
+- `ComponentRegistry` test coverage completed (per-field dirty-check
+  granularity for `rootId`/`displayName`/`parentId`, `has()`/`values()`/
+  `unregister()` untracked-id coverage) — 2026-08-24.
 - Removed the orphaned `EventBus`/`Subscription`/`SubscriptionRegistry`
   system from `@react-insight/core` — fully implemented and tested,
-  but never wired into `Runtime` (see `DECISIONS.md`, 2026-08-04).
+  but never wired into `Runtime` (see `DECISIONS.md`, 2026-08-04). The
+  relocated `packages/_core_src_archive_events` folder was permanently
+  deleted 2026-08-24.
 - `InsightContext.displayName` set, so the library's own internal
   context surfaces with a real name in Context Tracking output.
 - Playground wired to a real React application (`InsightProvider`,
   `InsightDebugPanel`) as the required end-to-end validation
   environment for Component/Render/Hook/Context Tracking changes.
+- **`Insight.inspectHookNames(id)`** — on-demand hook name resolution
+  (Phase 3's first slice, 2026-08-24). Re-invokes a component's
+  function with an instrumented dispatcher to resolve exact built-in
+  hook names (distinguishing `useState`/`useReducer` and
+  `useMemo`/`useCallback`) and one level of enclosing custom hook name.
+  Strictly on-demand; scoped to plain function components only. See
+  `DECISIONS.md`, 2026-08-24, for the full design history, including
+  two dependency/technique decisions reversed after research.
+- **`@react-insight/inspector`** — the fourth workspace package
+  (2026-08-24). `inspectComponent(insight, id)` combines
+  `Insight.getComponent()` and `Insight.inspectHookNames()`. Depends
+  only on the public `Insight` API; no knowledge of React Fiber.
 - Housekeeping: removed empty/unreferenced stub files from
   `@react-insight/core` (`src/insight/`, `src/internal/`,
   `plugins/Plugin.ts`) and dead files from `packages/playground`
@@ -91,39 +123,48 @@ on-demand hook name resolution and the Inspector/DevTools panel itself
 
 ## Current Priorities
 
-No single next feature has been committed to yet. Open candidates, in
-no particular order (see `PROJECT_CONTEXT.md`, "Current Focus" for the
-up-to-date list and reasoning):
+Open candidates for the next Phase 3 slice, in no particular order
+(see `PROJECT_CONTEXT.md`, "Current Focus" for the up-to-date list and
+reasoning):
 
-- Root-container correlation for multi-application pages.
-- `ComponentRegistry.getByRoot()` query (`onChange()` itself shipped —
-  see Completed above).
-- On-demand hook value/name resolution (likely Phase 3 work).
-- Extending value preview to `ref`/`memo-like` hooks.
-- Beginning Phase 3 Inspector groundwork.
+- A real "Inspect" UI in Playground — giving `@react-insight/inspector`
+  its first real UI consumer, and the natural way to discover whether
+  a React hook wrapper (`useComponentInspection()`) is actually
+  justified yet.
+- Extending `inspectHookNames()` to `memo`/`forwardRef`-wrapped
+  components.
+- Timeline or a real DevTools panel — both still without a concrete
+  design.
+
+---
+
+## Deferred, No Current Consumer
+
+Carried forward from Phase 2; still genuinely without a real consumer,
+so per Principle 5 (no premature abstraction) these remain deliberately
+unimplemented rather than scheduled speculatively:
+
+- Root-container correlation for multi-application pages (see
+  `DECISIONS.md`, 2026-07-18).
+- `ComponentRegistry.getByRoot()` query.
 
 ---
 
 ## Known Gaps Not Yet Scheduled
 
-These were identified during a project-wide baseline review and are
-deliberately not yet assigned to a session, pending a decision:
-
-- **No CI workflow actually exists in the repository**, despite
-  `ARCHITECTURE.md`/`DECISIONS.md` describing GitHub Actions CI as
-  implemented and passing on a Node 22/24 matrix. Either the workflow
-  needs to be added, or the documentation needs correcting. Re-flagged
-  as of the most recent session's inspection — still unresolved.
+None currently open. The CI workflow gap (previously the only entry
+here) was closed 2026-08-24 — see "Completed" above.
 
 ---
 
 ## Longer-Term Goals
 
-- On-demand hook value/name resolution (custom hook boundaries)
-- Extending value preview to `ref`/`memo-like` hooks
+- A real Inspector/DevTools UI (Playground "Inspect" button as a first
+  concrete step)
+- `memo`/`forwardRef` support for on-demand hook name resolution
+- A full nested custom-hook tree for `inspectHookNames()` (current
+  slice resolves one level only)
 - Timeline
-- DevTools panel
-- Inspector
 - Session management
 
 ---
@@ -133,5 +174,10 @@ deliberately not yet assigned to a session, pending a decision:
 Every roadmap item is expected to clear the same Quality Gate before
 being considered complete: lint, typecheck, build, unit tests, and —
 for any change touching Component Discovery, Render Tracking, Hook
-Tracking, or Context Tracking specifically — manual end-to-end
-validation in Playground (see `ARCHITECTURE.md`, Testing Strategy).
+Tracking, Context Tracking, or on-demand hook name resolution
+specifically — manual end-to-end validation in Playground (see
+`ARCHITECTURE.md`, Testing Strategy). For on-demand hook name
+resolution in particular, this validation carries extra weight, since
+even `@testing-library/react`'s jsdom environment cannot fully
+guarantee real-browser dispatcher behavior — see `DECISIONS.md`,
+2026-08-24.

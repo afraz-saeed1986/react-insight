@@ -1604,3 +1604,338 @@ they are independent: Bug 1 is a general correctness fix benefiting
 every future `onChange()` consumer; Bug 2 is specific to a subscriber
 that lives inside its own observed tree, a pattern any future
 DevTools-style panel built on `onChange()` will need to account for.
+
+
+## 2026-08-24
+
+### Removed the archived EventBus folder; added GitHub Actions CI workflow
+
+`packages/_core_src_archive_events/` — the folder relocated out of
+`packages/core/src/` during the 2026-08-04 EventBus removal, pending
+final deletion once no longer needed for reference — has now been
+permanently deleted. It had no `package.json`, so pnpm's workspace
+resolution never treated it as a package, and no file anywhere in the
+repository referenced it; safe to remove outright.
+
+`.github/workflows/ci.yml` has been added: lint, typecheck, build,
+test, and (core-only) coverage, on a Node 22/24 matrix, matching the
+design already described (but never actually implemented) in earlier
+entries and in `ARCHITECTURE.md`/`PROJECT_CONTEXT.md`. This closes the
+"Known Gap" flagged in `ROADMAP.md` since the Session 23 baseline
+review: CI had been documented as implemented and passing for several
+sessions without a workflow file actually existing in the repository.
+
+Reason:
+
+Both were explicit, already-agreed-upon follow-up items (Session 23's
+"Next session" list) with no remaining design questions — pure
+housekeeping, done together as a single small commit.
+
+---
+
+## 2026-08-24
+
+### Extended hook value preview to ref and memo-like hooks; added a string-length cap to previewHookValue()
+
+`inspectHooks()` now attaches a `value` preview for `kind: "ref"`
+(the ref's `.current` contents, not the `{ current }` wrapper object)
+and `kind: "memo-like"` (the memoized value itself, not the dependency
+array) — previously only `kind: "state"` hooks carried a value (see
+2026-07-28). Implementation reuses `previewHookValue()` unchanged,
+consistent with this project's established pattern of sharing
+serialization logic across every feature that needs an arbitrary-value
+preview (Context Tracking already did this on 2026-07-29).
+
+**Real bug found via Playground, not assumed:** extending preview to
+`ref` immediately surfaced that `previewHookValue()`/`previewLeaf()`
+had no upper bound on string length — arrays/objects were already
+capped at `MAX_PREVIEW_ENTRIES` (2026-07-28), but a string passed
+through unchanged regardless of size. Confirmed as a real, not merely
+theoretical, issue: Playground's own `InsightDebugPanel` holds a
+`ref` (`lastSnapshotRef`) containing a full JSON-serialized snapshot
+of every tracked component, which — once ref values were previewed —
+appeared verbatim and unbounded inside its own hook value preview.
+
+Fixed by adding `MAX_STRING_LENGTH = 200` to `hookValuePreview.ts`:
+strings longer than this are truncated with a `"… (N chars total)"`
+suffix, both at the top level and nested inside object/array preview
+(since both paths route through the same `previewLeaf()`). No change
+to `HookValueLeaf`/`HookValuePreview`'s type shape — truncated strings
+are still plain strings, so this is fully backward-compatible.
+
+Reason:
+
+Closes one of the two "Not Started" items from `PROJECT_CONTEXT.md`
+("Extending value preview to ref/memo-like hooks — no current driving
+need"). The driving need materialized the moment this was implemented
+and validated in Playground: the string-length gap was a real,
+previously-latent violation of this feature's own documented design
+constraint ("bounded — no unbounded cost on large structures",
+2026-07-28), not a hypothetical concern.
+
+---
+
+## 2026-08-24
+
+### Completed ComponentRegistry test coverage review
+
+Closed the Session 23 "Next session" follow-up item ("Complete the
+componentRegistry test coverage review"). Comparing `sync()`'s
+dirty-check (2026-08-23) against existing test coverage found that
+only `hooks`/`contexts` changes were tested in isolation for the
+`rendered: false` no-op path — `rootId`, `displayName`, and `parentId`
+each changing alone (with `rendered: false`) were not, despite `rootId`
+alone being exactly the mechanism the "pending" rootId self-heal
+(2026-07-21) depends on. Added three regression tests covering each
+field individually, plus tests for previously-uncovered public methods
+(`has()`, `values()`, `unregister()`'s `false` return for an untracked
+id) and a test documenting current (not newly designed) behavior:
+`sync()` on an already-`unmounted` id updates structural/render fields
+but does not resurrect `status` back to `"mounted"`.
+
+Reason:
+
+Pure test-coverage work — no production behavior changed. The
+dirty-check's most architecturally significant case (the "pending"
+rootId self-heal) had no direct regression test despite being
+referenced throughout `REACT_RUNTIME_ARCHITECTURE.md` and
+`DECISIONS.md`; a future change could have silently broken it without
+any test failing.
+
+---
+
+## 2026-08-24
+
+### Added Insight.getComponent(id), a single-component read API
+
+`Insight` gains `getComponent(id: string): ComponentSnapshot |
+undefined`, an O(1) counterpart to `getComponents()` for a consumer
+that already knows which component it wants. `createInsight.ts`'s
+component-mapping logic (previously inlined directly inside
+`getComponents()`) was extracted into a shared `toSnapshot()` helper,
+used by both methods, so the `ComponentNode` -> `ComponentSnapshot`
+mapping is defined in exactly one place.
+
+Reason:
+
+`getComponents()` was, until now, the only way to read tracked
+component data at all, requiring any consumer that wants a single
+component to filter/scan the full array every time. This is a small,
+justified building block for on-demand, single-component consumers —
+most immediately, `Insight.inspectHookNames()` (see the next entry)
+and the new `@react-insight/inspector` package, both of which operate
+on one component id at a time. No Playground re-validation required:
+a pure read API over already-stable `ComponentRegistry` state, not a
+change to Component Discovery / Render Tracking / Hook Tracking /
+Context Tracking themselves.
+
+---
+
+## 2026-08-24
+
+### Added Insight.inspectHookNames(id) — on-demand hook name resolution (Phase 3 start)
+
+Began Phase 3 (Inspector), chosen over Timeline, a real DevTools panel,
+or Session management because it was the only Phase 3 candidate with
+any existing design groundwork: the technique itself (re-invoking a
+component function with an instrumented dispatcher to recover hook
+names via `react-debug-tools`'s general approach) was already
+identified and deliberately deferred from structural Hook Tracking on
+2026-07-27.
+
+**Dependency research reversed an initial assumption.** The published
+`react-debug-tools` npm package was initially proposed as a safer
+alternative to hand-rolling dispatcher-swap logic. Verifying this
+before committing to it (the same discipline already applied to
+`react-debug-tools` on 2026-07-15 and 2026-07-27) found the opposite:
+the npm package has not been republished in roughly 7 years and is
+still at `0.1.0`, while the version React DevTools itself actually
+uses is vendored directly inside the `facebook/react` monorepo source
+and has continued evolving (`useOptimistic`, `useActionState`, `use()`
+support) well past the npm package's last publish. Depending on the
+stale npm package would likely have produced incorrect results against
+React 19. Decision reversed to a small, self-scoped, hand-rolled
+implementation instead — deliberately narrower than
+`react-debug-tools`'s full feature set (no nested custom-hook tree,
+no deps/source display), limited to exactly what this project needs:
+per-hook built-in name resolution and one level of enclosing custom
+hook name.
+
+**Dispatcher access simplified via further research.** The original
+design planned to capture `currentDispatcherRef` from the
+`rendererInternals` object `react-dom` passes to
+`hook.inject()`, extending `hookAdapter.ts` to store it. Further
+research found a simpler, more direct path: React 19 exposes the
+active dispatcher slot directly on the `react` package itself, at
+`React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE.H`
+(pre-19: `.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED
+.ReactCurrentDispatcher.current`) — the same internal real libraries
+in the React ecosystem (e.g. the React Compiler runtime) already read
+directly. Implemented as `dispatcherAccess.ts`, with the pre-19 shape
+kept as a defensive fallback only. This avoided any change to
+`hookAdapter.ts`/`inject()` entirely, and works identically in tests
+(a plain `import * as React from "react"`) and in real usage, with no
+dependency on the DevTools hook connection having completed first.
+
+**New capability: retaining a live Fiber reference beyond a single
+commit.** Every existing consumer of Fiber (Traversal, Hook Inspector,
+Context Inspector) is fully transient — reads what it needs within a
+single synchronous call and discards the reference. On-demand
+inspection can be requested arbitrarily long after the commit that
+produced a given component, so a new `fiberHandleRegistry.ts` (a
+`Map<ComponentId, FiberNode>`, updated by Traversal on every commit)
+was introduced specifically for this. This is a genuine, first-of-its-
+kind memory-lifetime consideration for this codebase: the map is
+explicitly cleared in `componentDiscoveryPlugin.ts`'s `onUnmount`
+handler (alongside the existing `markUnmounted()` call), to avoid
+retaining every unmounted component's Fiber — and everything it closes
+over — indefinitely.
+
+**Implementation (`hookNameInspector.ts`):** builds an instrumented
+dispatcher object whose methods, for the hook kinds already classified
+structurally by `hookInspector.ts` (state, ref, memo-like, effect,
+layout-effect) plus `useContext`, read the next node from the fiber's
+already-committed hooks linked list (never performing real update
+logic, never mutating real hook state) while recording the called
+method's name and call stack. Any other hook name falls through to a
+generic, best-effort `Proxy` handler: records the call, consumes
+exactly one hooks-list slot, returns the raw stored value — accurate
+for simple single-slot hooks, an explicit and documented trade-off for
+anything more elaborate, rather than attempting full fidelity for
+hooks this project has no current classified handling for anyway.
+`console.*` is suppressed for the duration of the re-invocation, and
+the real dispatcher is always restored in a `finally` block, mirroring
+the same defensive posture `react-devtools-shared` uses around its own
+equivalent call.
+
+**Custom hook name resolution required two rounds of real-execution
+correction, not just design.** The initial design assumed a fixed
+stack-frame offset (the immediate caller is always exactly two frames
+up from the shim). This was wrong in two ways, each only caught by
+running the actual test suite against real React 19, not reasoned
+about in advance:
+
+1. Constructing `Error()` inside a separate `recordCall()` helper
+   (rather than inline in each dispatcher method) adds `recordCall`
+   itself as an extra frame, which a fixed offset didn't account for.
+2. Our dispatcher methods are accessed through a `Proxy` (used for the
+   generic fallback case), which V8 reports as `Proxy.useState` rather
+   than bare `useState` — a prefix a `.replace(/^Object\./, "")`
+   assumption didn't anticipate.
+
+Fixed by abandoning fixed-offset parsing entirely in favor of a
+resilient skip-loop: strip any prefix before the last `.` in each
+frame name (handles both `Object.` and `Proxy.` uniformly), then skip
+leading frames whose name is in a known set of internal names (every
+built-in hook export name, plus `recordCall` itself) until the first
+frame that isn't — that frame is either a named custom hook, or the
+component function itself (in which case there is no enclosing custom
+hook, and `customHookName` is omitted).
+
+**Scope, deliberately limited for this slice:**
+
+- Plain function components only — not `memo`/`forwardRef`-wrapped,
+  not class components (already excluded via the same
+  `isClassComponentType()` check `hookInspector.ts` uses).
+  `memo`/`forwardRef` support is a real gap but has no current driving
+  need; can be added later without breaking this contract.
+- One level of custom hook name only, not a full nested tree (the
+  `HooksTree` real DevTools builds). No current consumer needs the
+  full tree; the flat, one-level result already resolves the two
+  concrete, previously-documented ambiguities this project has,
+  `useState`/`useReducer` and `useMemo`/`useCallback`.
+- Custom hook name resolution inherits the same minification caveat
+  already documented for this general technique (2026-07-27): it
+  reads real function names from the call stack, so it degrades to no
+  `customHookName` (not an incorrect one) under minified production
+  builds.
+- Only available where React exposes the internals this depends on —
+  expected to be development builds only; gracefully returns
+  `undefined` rather than throwing when unavailable.
+
+**Validated in both unit tests and Playground**, per the project's
+standing rule for anything touching Hook Tracking, with extra emphasis
+here specifically because `hookNameInspector.test.tsx` needed real
+React rendering (via `@testing-library/react`) rather than the plain
+Fiber fixtures the rest of the discovery pipeline's tests use — a
+hand-built fixture cannot faithfully stand in for React's real
+dispatcher. Playground validation (via a temporary
+`window.__insight` console handle) confirmed, against real browser
+commits: correct `useState` resolution on `Counter`; correct
+`customHookName: "useCounterValue"` resolution after temporarily
+wrapping `Counter`'s `useState` call in a real custom hook. Both
+temporary aids (the `window.__insight` handle, the `useCounterValue`
+wrapper) were removed after validation.
+
+Files added: `internal/discovery/dispatcherAccess.ts`,
+`internal/discovery/fiberHandleRegistry.ts` (+ test),
+`internal/discovery/hookNameInspector.ts` (+ `hookNameInspector.test.tsx`).
+Files changed: `internal/discovery/fiberAdapter.ts` (`FiberNode` gained
+optional `pendingProps`), `internal/discovery/hookInspector.ts`
+(`isClassComponentType` exported for reuse), `internal/discovery/
+traversal.ts` (wires `fiberHandleRegistry.set()`), `internal/plugins/
+componentDiscoveryPlugin.ts` (wires `fiberHandleRegistry.delete()` on
+unmount), `types.ts` (`InspectedHookName`, `Insight.inspectHookNames()`),
+`createInsight.ts`, `index.ts`.
+
+Reason:
+
+This is a deliberate, narrow first slice of Phase 3, not full DevTools-
+style hook inspection. It exists specifically to close two concrete,
+already-documented ambiguities (`useState`/`useReducer`,
+`useMemo`/`useCallback`) that structural Hook Tracking could never
+resolve on its own (2026-07-27), using the on-demand, re-render-based
+technique that was always understood to be the eventual answer but
+deliberately kept out of the always-on traversal pass. Every
+architectural boundary already established for this project was
+preserved: `@react-insight/react` owns the new React-Fiber-touching
+capability; presentation/orchestration on top of it is explicitly a
+different package's job (see the next entry).
+
+---
+
+## 2026-08-24
+
+### Added @react-insight/inspector, the fourth workspace package
+
+New package, `@react-insight/inspector`, exporting a single function
+for this initial slice: `inspectComponent(insight: Insight, id:
+string): ComponentInspection | undefined`, combining
+`Insight.getComponent()` (structural snapshot) and
+`Insight.inspectHookNames()` (on-demand hook names) into one result.
+
+**Package boundary rationale.** `REACT_ARCHITECTURE.md`'s Non-Goals
+for `@react-insight/react` already explicitly excluded "Inspector
+implementation" from that package's responsibilities, well before this
+package existed. `@react-insight/inspector` only ever calls the public
+`Insight` API — it has no knowledge of React Fiber or any React-
+internal concept, keeping the React-Fiber-touching mechanics (dispatcher
+swap, Fiber handle retention) inside `@react-insight/react`, where
+every other Fiber-aware capability already lives, while presentation/
+orchestration logic on top of that data lives here instead.
+
+**Deliberately minimal for this slice:** a plain function, not a React
+hook (`useComponentInspection()` or similar) — no current consumer
+needs one yet (Playground has no "Inspect" button; this was a
+deliberate decision to add this package before that UI, verified with
+a plain fake-`Insight` unit test rather than real rendering). A hook
+wrapper can be added once a real UI consumer exists, per this
+project's standing no-premature-abstraction principle.
+
+Tested entirely against a fake `Insight` object implementing the
+public interface — no real React rendering needed, since this package
+never touches React directly, only the already-independently-tested
+`Insight` API surface.
+
+Follows the same minimal package structure (`package.json`,
+`tsconfig.json`, `src/`) already established by `core`, `react`, and
+`playground` (2026-07-08, "Package consistency").
+
+Reason:
+
+This is the first package added to the monorepo since `playground`,
+and the first to depend on another React Insight package
+(`@react-insight/react`) rather than only external dependencies.
+Demonstrates the architecture described in `ARCHITECTURE.md`'s "Future
+Packages" section (`@react-insight/inspector` was explicitly named
+there) is workable as designed, not merely aspirational.

@@ -62,7 +62,8 @@ earlier, independently-designed EventBus/Subscription/SubscriptionRegistry
 implementation existed in `packages/core/src/events/` but was never
 wired into `Runtime` and was removed after confirming (by temporarily
 relocating it outside the package before deleting) that nothing
-depended on it. See `DECISIONS.md`.
+depended on it. The relocated folder itself was permanently deleted
+2026-08-24. See `DECISIONS.md`.
 
 ---
 
@@ -201,25 +202,28 @@ The React package builds on top of the completed Core package.
 Current architecture includes:
 
 - Public `Insight` abstraction
-- `Insight.getComponents()` public read API (`ComponentSnapshot`), decoupled from the internal `ComponentNode` representation
+- `Insight.getComponents()` and `Insight.getComponent(id)` public read APIs (`ComponentSnapshot`), decoupled from the internal `ComponentNode` representation and sharing a single mapping helper (`toSnapshot()`)
+- `Insight.onChange(listener)` reactive change-notification API, backed by a self-contained `ComponentRegistry.subscribe()` mechanism
+- `Insight.inspectHookNames(id)` — **on-demand** hook name resolution, the one deliberate exception to this package's otherwise zero-instrumentation, always-on posture (see "On-Demand Hook Name Resolution" below)
 - `installReactDevtoolsHook()`, a standalone public entry point independent of any `Insight` instance (see below)
 - Internal Runtime encapsulation
 - Internal Runtime access helpers
 - React Context
 - Internal Root model (including root-level commit counting)
 - Internal RootRegistry
-- Internal Component model (including render count / last-rendered / mount-unmount lifecycle state / structural hook summary / context dependency summary)
+- Internal Component model (including render count / last-rendered / mount-unmount lifecycle state / structural hook summary with value previews / context dependency summary)
 - Internal ComponentRegistry
 - Internal React lifecycle hook (root lifecycle only — see below)
 - Internal Root Lifecycle Plugin
 - Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector)
 - Internal Component Discovery Plugin
+- Internal on-demand hook name resolution (Fiber Handle Registry, Dispatcher Access, Hook Name Inspector) — deliberately kept outside the always-on discovery pipeline
 
-The React package owns React-specific behavior only and delegates all Runtime responsibilities to `@react-insight/core`.
+The React package owns React-specific behavior only and delegates all Runtime responsibilities to `@react-insight/core`. It also does not own Inspector presentation/orchestration logic — that is `@react-insight/inspector`'s responsibility (see "Inspector Package" below).
 
 React roots are synchronized with the Runtime through an internal root lifecycle plugin, while the Runtime remains the sole owner of the plugin lifecycle.
 
-Discovered React components are synchronized with the internal `ComponentRegistry` through an internal Component Discovery plugin. See `REACT_RUNTIME_ARCHITECTURE.md` for the detailed layer contracts (Hook Adapter, Fiber Adapter, Traversal, Mapper, Registry) and their architectural boundaries.
+Discovered React components are synchronized with the internal `ComponentRegistry` through an internal Component Discovery plugin. See `REACT_RUNTIME_ARCHITECTURE.md` for the detailed layer contracts (Hook Adapter, Fiber Adapter, Traversal, Mapper, Registry, and — since 2026-08-24 — Fiber Handle Registry, Dispatcher Access, Hook Name Inspector) and their architectural boundaries.
 
 ### Registration timing: root lifecycle vs. Component Discovery
 
@@ -242,6 +246,20 @@ Because of this, hook installation cannot be deferred to anything that runs afte
 
 React 18+ StrictMode invokes effects as mount → cleanup → mount in development. Since plugin registration and unregistration are both asynchronous (Runtime awaits `Plugin.setup()` / `Plugin.destroy()`), any code that fires registration and unregistration independently from effects can race: a second mount's registration can run before the first mount's cleanup has actually freed the plugin's name, throwing "Plugin already registered". `useRootLifecycle` avoids this by serializing every register/unregister call through a per-hook promise chain, so operations are strictly ordered regardless of exactly how closely spaced in time React schedules the effect/cleanup calls.
 
+### On-Demand Hook Name Resolution
+
+Added 2026-08-24. `Insight.inspectHookNames(id)` genuinely re-invokes a component's function with an instrumented dispatcher, to resolve exact hook names (distinguishing `useState`/`useReducer` and `useMemo`/`useCallback`, which are structurally indistinguishable) and custom hook boundaries — information no amount of reading already-committed Fiber state can recover.
+
+This is strictly on-demand: never wired into the always-on commit pipeline, never called automatically. It depends on three new internal modules working together — a Fiber Handle Registry (the first live-Fiber retention beyond a single commit in this codebase, explicitly cleared on unmount), Dispatcher Access (reads React's active dispatcher slot directly from the `react` package's own internals), and the Hook Name Inspector itself (the dispatcher-swap and call-stack-parsing logic). Full contract in `REACT_RUNTIME_ARCHITECTURE.md`, Section 6.
+
+Two implementation decisions were reversed after research rather than assumed correct upfront: depending on the published `react-debug-tools` npm package (found to be ~7 years stale, abandoned in favor of an in-repo, actively-evolving version DevTools actually uses) and threading `currentDispatcherRef` through this package's own DevTools hook (found unnecessary once a more direct path via `react`'s own internals was identified). See `DECISIONS.md`, 2026-08-24.
+
+### Inspector Package
+
+`@react-insight/inspector`, added 2026-08-24, is the fourth workspace package and the first to depend on another React Insight package. It exports `inspectComponent(insight, id)`, combining `Insight.getComponent()` and `Insight.inspectHookNames()` into a single result — and nothing more for this initial slice (no React hook wrapper yet; no UI).
+
+This package has no knowledge of React Fiber, dispatchers, or any React-internal concept — it depends only on `@react-insight/react`'s public `Insight` API. This realizes a boundary `REACT_ARCHITECTURE.md`'s Non-Goals section had already described before this package existed ("Inspector implementation" does not belong in `@react-insight/react`).
+
 ---
 
 ## Design Rules
@@ -261,6 +279,8 @@ React 18+ StrictMode invokes effects as mount → cleanup → mount in developme
 - Any required type assertions must include a documented safety comment explaining why they are safe.
 - Nothing under `internal/` is exported from a package's public entry point, with one deliberate, documented exception: `installReactDevtoolsHook()` (see React Integration above), which must be callable before an `Insight` instance exists.
 - Registration/unregistration calls triggered from React effects must be serialized (not fired independently), to remain correct under React StrictMode's development-mode double-invoke.
+- Runtime observation stays zero-instrumentation and always-on for every capability except one, deliberate, explicitly-scoped exception: on-demand hook name resolution (`Insight.inspectHookNames()`), which must never be called automatically.
+- Presentation/orchestration logic built on top of `Insight` data belongs in a dedicated consumer package (`@react-insight/inspector`), not inside `@react-insight/react` itself.
 
 ---
 
@@ -331,22 +351,30 @@ Current coverage includes:
 
 Current coverage includes:
 
-- `createInsight()` (including `getComponents()` and eager Component Discovery registration)
+- `createInsight()` (including `getComponents()`, `getComponent(id)`, `inspectHookNames(id)`, and eager Component Discovery registration)
 - `InsightProvider`
 - `useInsight()`
 - `useInsightLifecycle()` under React StrictMode (register/unregister serialization)
 - `RootRegistry` (including `recordCommit()`)
-- `ComponentRegistry` (including `sync()` mount/update behavior, `markUnmounted()`, and render-count accounting)
+- `ComponentRegistry` (including `sync()` mount/update behavior with per-field dirty-check granularity, `markUnmounted()`, render-count accounting, `has()`/`values()`/`unregister()` untracked-id coverage)
 - Root Lifecycle Plugin
-- Component Discovery Plugin (commit/sync, pre-root "pending" fallback, unmount via `markUnmounted()`, disconnect on destroy)
+- Component Discovery Plugin (commit/sync, pre-root "pending" fallback, unmount via `markUnmounted()` and fiber-handle cleanup, disconnect on destroy)
 - Provider lifecycle integration
 - Mount / Unmount synchronization
 - Public API encapsulation
-- Component Discovery pipeline (Fiber Adapter, Traversal, Mapper, Hook Adapter, Hook Inspector, Context Inspector, including Fiber `current`/`alternate` identity resolution for stable ids, `memoizedProps`/`memoizedState` comparison for `rendered` detection, structural hook-shape classification with shallow value preview for `state`-kind hooks, and context-dependency-list walking with shallow value preview and displayName-based naming)
+- Component Discovery pipeline (Fiber Adapter, Traversal, Mapper, Hook Adapter, Hook Inspector, Context Inspector, including Fiber `current`/`alternate` identity resolution for stable ids, `memoizedProps`/`memoizedState` comparison for `rendered` detection, structural hook-shape classification with shallow value preview for `state`/`ref`/`memo-like`-kind hooks, and context-dependency-list walking with shallow value preview and displayName-based naming)
+- Fiber Handle Registry (set/get/delete/overwrite)
+- Hook Name Inspector — tested against **real** React rendering via `@testing-library/react` (not plain fixtures, since a hand-built fixture cannot faithfully stand in for React's real dispatcher): `useState`/`useReducer` and `useMemo`/`useCallback` disambiguation, custom hook name resolution, no real hook-state mutation, console suppression during re-invocation, graceful failure handling, class-component exclusion
+
+### @react-insight/inspector Tests
+
+`inspectComponent()` tested entirely against a fake `Insight` object implementing the public interface — no real React rendering needed, since this package never touches React directly.
+
+---
 
 ### End-to-End Validation (Playground)
 
-Beyond unit tests, Playground renders a real React tree through `InsightProvider` and is the only environment that exercises the real `react-dom` DevTools hook connection path (`hook.inject(...)`, module-load timing, actual commit notifications) rather than a directly-invoked test double. This caught several bugs invisible to fixture-based unit tests alone — see `DECISIONS.md`, 2026-07-21 — and remains the required check before considering discovery/render-tracking/hook-tracking/context-tracking changes complete.
+Beyond unit tests, Playground renders a real React tree through `InsightProvider` and is the only environment that exercises the real `react-dom` DevTools hook connection path (`hook.inject(...)`, module-load timing, actual commit notifications) rather than a directly-invoked test double. This caught several bugs invisible to fixture-based unit tests alone — see `DECISIONS.md`, 2026-07-21 — and remains the required check before considering discovery/render-tracking/hook-tracking/context-tracking/on-demand-hook-name-resolution changes complete. For the last of these specifically, Playground validation carries extra weight beyond the usual: even `@testing-library/react`'s jsdom environment cannot fully guarantee real-browser dispatcher behavior. See `DECISIONS.md`, 2026-08-24.
 
 ---
 
@@ -374,6 +402,8 @@ Coverage reports are generated using the V8 provider in:
 coverage/
 ```
 
+Coverage thresholds are enforced for the Core package only; React and Inspector are held to the same lint/typecheck/build/test bar but do not currently have a dedicated coverage script wired into CI.
+
 ---
 
 ## Monorepo Architecture
@@ -383,6 +413,7 @@ packages
 │
 ├── core
 ├── react
+├── inspector
 ├── playground
 └── eslint-config
 ```
@@ -401,14 +432,19 @@ Current internal infrastructure includes:
 - Runtime access helpers
 - Root model (including commit counting)
 - RootRegistry
-- Component model (including render tracking, structural hook tracking with state-value preview, context-dependency tracking with value preview, and unmount history)
+- Component model (including render tracking, structural hook tracking with value previews across `state`/`ref`/`memo-like` kinds, context-dependency tracking with value preview, and unmount history)
 - ComponentRegistry
 - Root Lifecycle hook and Plugin (effect-based)
 - Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector) and Plugin (registered eagerly from `createInsight()`, not effect-based)
+- On-demand hook name resolution (Fiber Handle Registry, Dispatcher Access, Hook Name Inspector) — reachable only through `Insight.inspectHookNames()`, never part of the always-on pipeline
+
+### inspector
+
+Added 2026-08-24. Presentation/orchestration layer on top of `@react-insight/react`'s public `Insight` API — `inspectComponent(insight, id)`. No knowledge of React Fiber or any React-internal concept. First workspace package to depend on another React Insight package.
 
 ### playground
 
-Integration application used to validate package exports, Runtime behavior and Developer Experience before publishing — and, since it now renders a real React tree through `@react-insight/react`, the only environment that validates Component Discovery, Render Tracking, Hook Tracking, and Context Tracking against actual `react-dom` behavior rather than synthetic Fiber fixtures.
+Integration application used to validate package exports, Runtime behavior and Developer Experience before publishing — and, since it now renders a real React tree through `@react-insight/react`, the only environment that validates Component Discovery, Render Tracking, Hook Tracking, Context Tracking, and on-demand hook name resolution against actual `react-dom` behavior rather than synthetic Fiber fixtures.
 
 ---
 
@@ -468,8 +504,8 @@ pnpm build
 pnpm test
 ```
 
-Continuous Integration verifies these quality gates automatically on every push and pull request.
+Continuous Integration verifies these quality gates automatically on every push and pull request — a real `.github/workflows/ci.yml` (lint, typecheck, build, test, core-only coverage, Node 22/24 matrix) exists and has been verified passing as of 2026-08-24, closing a gap where earlier versions of this document described CI as implemented without a workflow file actually existing in the repository. See `DECISIONS.md`, 2026-08-24.
 
-For changes touching Component Discovery, Render Tracking, Hook Tracking, or Context Tracking specifically, manual end-to-end verification through Playground (real browser, real React commits) is also required before considering the change complete — see Testing Strategy above.
+For changes touching Component Discovery, Render Tracking, Hook Tracking, Context Tracking, or on-demand hook name resolution specifically, manual end-to-end verification through Playground (real browser, real React commits) is also required before considering the change complete — see Testing Strategy above.
 
 A change is considered complete only after all quality gates pass successfully.

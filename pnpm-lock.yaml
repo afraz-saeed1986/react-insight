@@ -79,6 +79,9 @@ importers:
       '@react-insight/core':
         specifier: workspace:*
         version: link:../core
+      '@react-insight/inspector':
+        specifier: workspace:*
+        version: link:../inspector
       '@react-insight/react':
         specifier: workspace:*
         version: link:../react

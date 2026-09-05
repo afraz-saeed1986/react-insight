@@ -34,7 +34,7 @@ The React package is **not** responsible for:
 - Inspector implementation
 - Plugin execution logic
 
-Those responsibilities belong to other packages.
+Those responsibilities belong to other packages. As of 2026-08-24, "Inspector implementation" is no longer a purely aspirational non-goal — `@react-insight/inspector` is a real, existing package built exactly on this boundary: it consumes this package's public `Insight` API (including the on-demand `inspectHookNames()` capability below) and has no knowledge of React Fiber. See "Package Responsibilities" and `DECISIONS.md`, 2026-08-24.
 
 ---
 
@@ -72,6 +72,12 @@ function Dashboard() {
   const insight = useInsight();
 
   const components = insight.getComponents();
+  const one = insight.getComponent(components[0].id);
+
+  // On-demand only — re-invokes the component's function. See
+  // "On-demand Hook Name Resolution" below before calling this
+  // automatically or on every render.
+  const hookNames = insight.inspectHookNames(components[0].id);
   // ...
 }
 ```
@@ -109,7 +115,8 @@ Responsible for:
 - Delegating plugin registration.
 - Delegating plugin unregistration.
 - Delegating Runtime destruction.
-- Exposing `getComponents()`, mapping internal `ComponentNode` records to the public `ComponentSnapshot` shape.
+- Exposing `getComponents()` and `getComponent(id)`, both mapping internal `ComponentNode` records to the public `ComponentSnapshot` shape through a single shared `toSnapshot()` helper (see `DECISIONS.md`, 2026-08-24).
+- Exposing `inspectHookNames(id)`, delegating to `internal/discovery/hookNameInspector.ts`'s `resolveHookNames()` after resolving a live Fiber handle (`fiberHandleRegistry.ts`) and the current dispatcher ref (`dispatcherAccess.ts`). See "On-demand Hook Name Resolution" below.
 
 The Runtime implementation remains internal to the package.
 
@@ -238,7 +245,9 @@ __REACT_DEVTOOLS_GLOBAL_HOOK__
   traverse()  — rootId falls back to "pending" if no root
                is registered yet (self-heals on the next commit,
                since sync() updates rootId whenever it differs
-               from what's stored)
+               from what's stored); also records a fiber handle
+               per component (fiberHandleRegistry.ts) for later
+               on-demand inspection
         │
         ▼
   mapDiscoveredComponent()
@@ -253,6 +262,10 @@ __REACT_DEVTOOLS_GLOBAL_HOOK__
         │
         ▼
   ComponentRegistry.markUnmounted()
+        │
+        ▼
+  fiberHandleRegistry.delete() — bounds the fiber handle
+  registry's memory (see "On-demand Hook Name Resolution" below)
 
 Runtime.destroy() / unregisterPlugin("react:discovery")
         │
@@ -285,25 +298,54 @@ This closes what was previously documented here as a known accuracy limitation: 
 
 ### Hook Tracking (structural)
 
-`inspectHooks()` walks the hooks linked list rooted at a function component Fiber's `memoizedState` and produces a `HookSummary[]` (`{ index, kind }`) for each discovered component, threaded through the same pipeline as `rendered`: `DiscoveredComponent.hooks` → `ComponentSyncInput.hooks` → `ComponentNode.hooks` → `ComponentSnapshot.hooks`. Unlike `rendered`, `hooks` is updated unconditionally on every `sync()` (a structural fact like `displayName`, not an accumulated stat like `renderCount`).
+`inspectHooks()` walks the hooks linked list rooted at a function component Fiber's `memoizedState` and produces a `HookSummary[]` (`{ index, kind, value? }`) for each discovered component, threaded through the same pipeline as `rendered`: `DiscoveredComponent.hooks` → `ComponentSyncInput.hooks` → `ComponentNode.hooks` → `ComponentSnapshot.hooks`. Unlike `rendered`, `hooks` is updated unconditionally on every `sync()` (a structural fact like `displayName`, not an accumulated stat like `renderCount`).
 
-This is a **structural-only, always-on** inspection: no re-render, no instrumented dispatcher, consistent with the same zero-instrumentation positioning already established for Render Tracking (`DECISIONS.md`, 2026-07-20). It was deliberately chosen over the technique real React DevTools uses (`react-debug-tools`'s `inspectHooksOfFiber`, which re-invokes the component function with an instrumented dispatcher to recover hook _names_, including custom hook boundaries, via call-stack parsing) — that technique is real per-inspection work, intended by React's own team to run on-demand only, not on every commit for every component. See `DECISIONS.md`, 2026-07-27.
+This is a **structural-only, always-on** inspection: no re-render, no instrumented dispatcher, consistent with the same zero-instrumentation positioning already established for Render Tracking (`DECISIONS.md`, 2026-07-20). It cannot, on its own, distinguish `useState` from `useReducer`, `useMemo` from `useCallback`, or recover any hook _name_ — resolving those requires re-invoking the component with an instrumented dispatcher, the technique real React DevTools uses via `react-debug-tools`'s `inspectHooksOfFiber`. That technique is deliberately **not** part of this always-on structural pass; it is instead available as a separate, explicit, on-demand capability — see "On-demand Hook Name Resolution" below. See `DECISIONS.md`, 2026-07-27.
 
-Because `isComponentFiber()` elsewhere in this package intentionally treats function and class components alike (both are `typeof === "function"` in JavaScript — a distinction that doesn't matter for identity/render-detection), `inspectHooks()` independently guards against class components, whose `memoizedState` is `this.state`, not a hooks list: it checks `type.prototype.isReactComponent`, the same marker React's own reconciler uses internally to decide whether to construct a class instance, rather than an unstable Fiber `tag` number. Class components report `hooks: []`.
+Because `isComponentFiber()` elsewhere in this package intentionally treats function and class components alike (both are `typeof === "function"` in JavaScript — a distinction that doesn't matter for identity/render-detection), `inspectHooks()` independently guards against class components, whose `memoizedState` is `this.state`, not a hooks list: it checks `type.prototype.isReactComponent` (exported as `isClassComponentType()`, reused unchanged by the on-demand hook name resolver below rather than duplicated — see `DECISIONS.md`, 2026-08-24), the same marker React's own reconciler uses internally to decide whether to construct a class instance, rather than an unstable Fiber `tag` number. Class components report `hooks: []`.
 
 **Known limitations** (confirmed via a controlled Playground experiment against a probe component exercising every common hook, not assumed — see `DECISIONS.md`, 2026-07-27):
 
-- `useState` and `useReducer` share an identical Fiber-level shape and both report `kind: "state"`.
-- `useMemo` and `useCallback` share an identical shape and both report `kind: "memo-like"`.
+- `useState` and `useReducer` share an identical Fiber-level shape and both report `kind: "state"`. `Insight.inspectHookNames()` (on-demand) resolves this distinction — see below.
+- `useMemo` and `useCallback` share an identical shape and both report `kind: "memo-like"`. Also resolved on-demand — see below.
 - `useEffect` and `useLayoutEffect` _are_ distinguishable, via a bitmask on the Effect object's `tag` field (confirmed empirically: `9` = `useEffect`, `5` = `useLayoutEffect`).
 - `useContext` (and any custom hook that is purely a `useContext` wrapper) is entirely invisible to `inspectHooks()` — `readContext()` does not consume a hook slot at all, so no entry appears in the hooks list. (As of `DECISIONS.md`, 2026-07-29, Context values are tracked separately — see "Context Tracking (structural)" below — so this is a hooks-list-specific gap only, not a real data gap for Context values.)
-- No hook or custom-hook _name_ is available from this technique, for any kind — see above. As of `DECISIONS.md`, 2026-07-28, `state`-kind hooks (`useState`/`useReducer`) do carry a shallow, circular-safe _value_ preview (`previewHookValue()`, one level deep — nested objects/arrays/functions/class instances are described by type, not walked further), read directly from `memoizedState` with no re-render, since values (unlike names) require no instrumented dispatcher for this kind. `ref`/`memo-like` hooks still carry no value in this slice.
+- No hook or custom-hook _name_ is available from this structural technique, for any kind. As of `DECISIONS.md`, 2026-07-28 (extended 2026-08-24), `state`, `ref`, and `memo-like` kind hooks all carry a shallow, circular-safe _value_ preview (`previewHookValue()`, one level deep, string length capped at 200 characters — nested objects/arrays/functions/class instances are described by type, not walked further), read directly from `memoizedState` with no re-render, since values (unlike names) require no instrumented dispatcher for these kinds.
+
+### On-demand Hook Name Resolution
+
+Unlike everything else in this document, `Insight.inspectHookNames(id)` is a **deliberate, narrow departure** from this package's zero-instrumentation, always-on posture: it genuinely re-invokes the component's function to recover information the structural techniques above cannot. This is the first slice of Phase 3 (Inspector) work. See `DECISIONS.md`, 2026-08-24, for the full design history, including two decisions that were reversed after research (see below).
+
+**What it resolves that structural Hook Tracking cannot:** the exact built-in hook name for each hooks-list slot (distinguishing `useState`/`useReducer` and `useMemo`/`useCallback`), and the name of the nearest enclosing custom hook, if the hook was called from inside one rather than directly in the component body.
+
+**Strictly on-demand.** This must never be called automatically or wired into the always-on commit pipeline — it is only safe to call in direct response to an explicit inspection request (e.g. a future "Inspect" UI action), since it re-executes the component's render body and any real side effects in it.
+
+**Dependency decision reversed after research.** The published `react-debug-tools` npm package was initially the planned dependency for the dispatcher-swap mechanics, since it is the technique real React DevTools uses. Verifying this before committing to it found the npm package hadn't been republished in roughly 7 years (still `0.1.0`), while the version DevTools actually uses is vendored directly inside the `facebook/react` monorepo and has kept evolving past the npm package's last publish. Decision reversed to a small, hand-rolled, deliberately narrower implementation instead (no nested custom-hook tree, no deps/source display) — see `internal/discovery/hookNameInspector.ts` below.
+
+**Dispatcher access simplified after further research.** Rather than threading `currentDispatcherRef` through this package's own `hookAdapter.ts`/`inject()` (the original plan), `internal/discovery/dispatcherAccess.ts` reads React's active dispatcher slot directly from the `react` package itself — `React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE.H` on React 19 (with a pre-19 fallback) — the same internal real ecosystem libraries (e.g. the React Compiler runtime) already read directly. This has no dependency on this package's own DevTools hook connection having completed, and works identically in tests and real usage.
+
+**Retaining a live Fiber reference — a first for this codebase.** Every other Fiber consumer in this pipeline (Traversal, Hook Inspector, Context Inspector) is fully transient. On-demand inspection can be requested arbitrarily long after the commit that produced a component, so `internal/discovery/fiberHandleRegistry.ts` retains a `Map<ComponentId, FiberNode>`, updated by Traversal on every commit and explicitly cleared by `componentDiscoveryPlugin.ts`'s `onUnmount` handler — without this, every unmounted component's Fiber (and everything it closes over) would be retained forever.
+
+**Implementation (`hookNameInspector.ts`).** Builds an instrumented dispatcher whose methods, for the hook kinds already classified structurally above (state, ref, memo-like, effect, layout-effect, plus `useContext`), read the next node from the fiber's already-committed hooks linked list — never performing real update logic, never mutating real hook state — while recording the called method's name and call stack. Any other hook name falls through to a generic, best-effort `Proxy` handler (records the call, consumes one slot, returns the raw stored value) — an explicit, documented trade-off rather than attempting full fidelity for hooks this project has no other classified handling for. `console.*` is suppressed for the duration of the re-invocation and the real dispatcher is always restored in a `finally` block, mirroring `react-devtools-shared`'s own defensive posture around the equivalent call.
+
+**Custom hook name resolution required real-execution correction, twice.** An initial fixed-stack-frame-offset design was wrong in two ways only caught by running the real test suite against React 19: (1) constructing `Error()` inside a separate `recordCall()` helper adds an extra frame the fixed offset didn't account for; (2) dispatcher methods accessed through the `Proxy` (used for the generic fallback) report as `Proxy.useState` rather than bare `useState` in V8 stack traces. Fixed by abandoning fixed-offset parsing for a resilient skip-loop: strip any prefix before the last `.` in each frame name (handles both `Object.` and `Proxy.`), then skip leading frames whose name is a known internal one (every built-in hook export name, plus `recordCall` itself) until the first frame that isn't — that frame is either a named custom hook or the component itself.
+
+**Scope, deliberately limited for this slice:**
+
+- Plain function components only — not `memo`/`forwardRef`-wrapped, not class components (excluded via the same `isClassComponentType()` check `hookInspector.ts` uses).
+- One level of custom hook name only, not a full nested tree (`react-debug-tools`' `HooksTree`). No current consumer needs more, and the flat result already resolves this project's two concrete, previously-documented ambiguities.
+- Inherits the same minification caveat already documented for this general technique: custom hook name resolution reads real function names from the call stack, so it degrades to no `customHookName` (never an incorrect one) under minified production builds.
+- Depends on React internals expected to be present in development builds only; gracefully returns `undefined` rather than throwing when unavailable.
+
+**Validated in both real-rendering unit tests and Playground.** `hookNameInspector.test.tsx` uses `@testing-library/react` (not plain Fiber fixtures — a hand-built fixture cannot faithfully stand in for React's real dispatcher). Playground validation (via a temporary `window.__insight` console handle, removed after) confirmed against real browser commits: correct `useState` resolution on `Counter`, and correct `customHookName` resolution after temporarily wrapping `Counter`'s `useState` call in a real custom hook.
+
+---
 
 ### Context Tracking (structural)
 
 `inspectContexts()` walks a completely separate linked list from the hooks list — `fiber.dependencies.firstContext` — which React maintains for any fiber, function or class component alike, that calls `useContext()`/`readContext()`. It produces a `ContextSummary[]` (`{ index, displayName, value }`) per distinct Context, threaded through the same pipeline as `hooks`: `DiscoveredComponent.contexts` → `ComponentSyncInput.contexts` → `ComponentNode.contexts` → `ComponentSnapshot.contexts`, updated unconditionally on every `sync()` like other structural fields.
 
-Unlike hook values, no re-render is needed here either: `memoizedValue` already sits directly on each dependency node, populated by React itself on every commit that reads the Context — there is no need to walk up to the `Provider` fiber. `value` reuses `previewHookValue()` (2026-07-28) unchanged, since a Context's current value has exactly the same "arbitrary JS value, must stay safe and bounded" shape as a `state`-kind hook's value.
+Unlike hook values, no re-render is needed here either: `memoizedValue` already sits directly on each dependency node, populated by React itself on every commit that reads the Context — there is no need to walk up to the `Provider` fiber. `value` reuses `previewHookValue()` (2026-07-28, string-length cap added 2026-08-24) unchanged, since a Context's current value has exactly the same "arbitrary JS value, must stay safe and bounded" shape as a hook's value.
 
 **Names are recoverable here, unlike hooks.** `context.displayName` is a documented, publicly-supported convention — the same one real React DevTools uses to label context consumers — not a private internal. `resolveDisplayName()` falls back to the literal string `"Context"` when the consuming application never set it.
 
@@ -358,11 +400,30 @@ Responsibilities:
 - ComponentRegistry (including render tracking, structural hook tracking, structural context tracking, unmount history, and change notification via `subscribe()`/`Insight.onChange()`)
 - Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector)
 - Internal Component Discovery plugin, registered eagerly from `createInsight()`
+- On-demand hook name resolution (`dispatcherAccess.ts`, `fiberHandleRegistry.ts`, `hookNameInspector.ts`), exposed publicly as `Insight.inspectHookNames()` — the one deliberate, narrow exception to this package's otherwise zero-instrumentation posture (see "On-demand Hook Name Resolution" above)
 - Future React-specific features
 
 The React package consumes the Runtime provided by `@react-insight/core`.
 
-It must never reimplement Runtime behavior.
+It must never reimplement Runtime behavior. It must also never implement Inspector presentation/orchestration logic itself — that is `@react-insight/inspector`'s responsibility (see below).
+
+---
+
+## @react-insight/inspector
+
+Added 2026-08-24 — the fourth workspace package, and the first to depend on another React Insight package rather than only external dependencies.
+
+Responsibilities:
+
+- `inspectComponent(insight, id)` — combines `Insight.getComponent()` and `Insight.inspectHookNames()` into a single `ComponentInspection` result.
+- Presentation/orchestration logic that sits on top of `@react-insight/react`'s public API.
+
+Non-goals:
+
+- No knowledge of React Fiber or any React-internal concept — depends only on the public `Insight` interface.
+- No React hook wrapper yet (e.g. `useComponentInspection()`) — deferred until a real UI consumer exists (currently none; Playground has no "Inspect" action yet).
+
+This package is the first concrete realization of the boundary `@react-insight/react`'s own Non-Goals section already described ("Inspector implementation" does not belong there) — see `DECISIONS.md`, 2026-08-24.
 
 ---
 
@@ -370,12 +431,13 @@ It must never reimplement Runtime behavior.
 
 The architecture supports additional packages without requiring changes to the Core API.
 
-Examples:
+Examples still pending:
 
 - `@react-insight/devtools`
-- `@react-insight/inspector`
 - `@react-insight/timeline`
 - `@react-insight/plugins`
+
+`@react-insight/inspector`, previously listed here as an example, now exists — see above.
 
 Each package should have a single, well-defined responsibility.
 
@@ -400,6 +462,7 @@ Current internal implementation includes:
 - Internal Root Lifecycle Plugin
 - Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector) — registered eagerly, not via a hook
 - Internal Component Discovery Plugin
+- Internal on-demand hook name resolution (`dispatcherAccess.ts`, `fiberHandleRegistry.ts`, `hookNameInspector.ts`) — the only internal capability that is explicitly *not* wired into the always-on discovery pipeline; reached only through `Insight.inspectHookNames()`
 - Private React Context
 
 This separation allows internal refactoring without introducing breaking API changes.
@@ -423,6 +486,7 @@ packages/react
 │   │
 │   ├── context/
 │   │   ├── InsightContext.ts
+│   │   ├── InsightContext.test.ts
 │   │   └── index.ts
 │   │
 │   ├── hooks/
@@ -437,7 +501,7 @@ packages/react
 │       ├── index.ts
 │       ├── root.ts
 │       ├── rootRegistry.ts
-│       ├── RootRegistry.test.ts
+│       ├── rootRegistry.test.ts
 │       ├── runtime.ts
 │       ├── useInsightLifecycle.ts
 │       ├── useInsightLifecycle.test.tsx
@@ -447,10 +511,15 @@ packages/react
 │       │   ├── discoveredComponent.ts
 │       │   ├── fiberAdapter.ts
 │       │   ├── fiberAdapter.test.ts
+│       │   ├── fiberHandleRegistry.ts
+│       │   ├── fiberHandleRegistry.test.ts
+│       │   ├── dispatcherAccess.ts
 │       │   ├── hookAdapter.ts
 │       │   ├── hookAdapter.test.ts
 │       │   ├── hookInspector.ts
 │       │   ├── hookInspector.test.ts
+│       │   ├── hookNameInspector.ts
+│       │   ├── hookNameInspector.test.tsx
 │       │   ├── hookValuePreview.ts
 │       │   ├── hookValuePreview.test.ts
 │       │   ├── contextInspector.ts
@@ -475,6 +544,14 @@ Note: `useComponentDiscovery.ts` was removed (2026-07-21) — its logic
 was absorbed into `createInsight()`'s eager registration. There is no
 longer a React hook for Component Discovery.
 
+Note: `RootRegistry.test.ts` and `context/Insightcontext.test.ts` were
+originally created with inconsistent filename casing relative to their
+source files (`rootRegistry.ts`, `InsightContext.ts`); harmless on
+Linux/CI since imports use explicit paths, but corrected here for
+documentation accuracy. If the actual filenames in the repository
+still use the old casing, treat that as a pending cosmetic cleanup,
+not a functional issue.
+
 ---
 
 # Module Responsibilities
@@ -491,8 +568,9 @@ Responsibilities:
 - Register the Component Discovery plugin eagerly (synchronously, before returning) — see "Component Discovery" above.
 - Hide Runtime implementation details.
 - Delegate Runtime operations.
-- Expose `getComponents()` (maps `ComponentNode` → public `ComponentSnapshot`).
+- Expose `getComponents()` and `getComponent(id)` (both map `ComponentNode` → public `ComponentSnapshot` via a shared `toSnapshot()` helper).
 - Expose `onChange(listener)`, delegating to `ComponentRegistry.subscribe()`.
+- Expose `inspectHookNames(id)`, delegating to `hookNameInspector.ts`'s `resolveHookNames()` after resolving a fiber handle and dispatcher ref; returns `undefined` if either is unavailable.
 - Return the public API.
 
 ---
@@ -524,6 +602,7 @@ Future hooks may include:
 - `useRuntimeEvents()`
 - `usePlugin()`
 - `useTimeline()`
+- A `@react-insight/inspector`-side `useComponentInspection()`, once a real UI consumer justifies it (see "Package Responsibilities" above)
 
 ---
 
@@ -537,7 +616,7 @@ Responsibilities:
 - Synchronize discovered components without throwing on an existing id (`sync()` — decides mount vs. update by comparing against existing state; when an update genuinely changes something — either `rendered: true`, or any of `rootId`/`displayName`/`parentId`/`hooks`/`contexts` differing from what's stored — updates those fields and schedules a notification; otherwise the call is a no-op. Structural fields updating whenever they differ, not only when `rendered` is `true`, is what still allows the discovery pipeline's `"pending"`-rootId fallback to self-heal for free. See `DECISIONS.md`, 2026-08-23.)
 - Notify subscribers of meaningful changes (`subscribe()`/`scheduleNotify()`), batched via `queueMicrotask()`, wired into `sync()` and `markUnmounted()`, backing `Insight.onChange()`. See `DECISIONS.md`, 2026-08-04 and 2026-08-23.
 - Unregister components (`unregister()` — hard removal), or mark them unmounted while preserving their history (`markUnmounted()` — sets `status: "unmounted"` and `unmountedAt`, keeps the record).
-- Lookup components.
+- Lookup components (`get(id)`, `has(id)`, `values()`, `size` — all now covered by dedicated regression tests, closing a coverage gap identified in a 2026-08-24 review; see `DECISIONS.md`).
 - Maintain framework-agnostic component state (`status`, `mountedAt`, `unmountedAt`, `renderCount`, `lastRenderedAt`, `hooks`, `contexts`).
 
 Has no knowledge of React Fiber or how components were discovered.
@@ -548,7 +627,7 @@ Has no knowledge of React Fiber or how components were discovered.
 
 ## internal/discovery/
 
-Contains the Component Discovery pipeline. Each module maps to one layer of the contract defined in `REACT_RUNTIME_ARCHITECTURE.md`, Section 6.
+Contains the Component Discovery pipeline, plus the on-demand hook name resolution capability (which is deliberately *not* part of the always-on pipeline — see "On-demand Hook Name Resolution" above). Each pipeline module maps to one layer of the contract defined in `REACT_RUNTIME_ARCHITECTURE.md`, Section 6.
 
 ### hookAdapter.ts
 
@@ -558,21 +637,35 @@ Exports `installReactDevtoolsHook()` (public, standalone — see "Public API" ab
 
 `connectHookAdapter()` calls `installReactDevtoolsHook()` defensively, then chains any existing `onCommitFiberRoot` / `onCommitFiberUnmount` instead of overwriting them, and isolates callback errors so they never reach React's renderer.
 
+Note: this module was *not* extended to capture `currentDispatcherRef` for on-demand hook name resolution — that turned out to have a simpler, more direct solution; see `dispatcherAccess.ts` below.
+
 ### fiberAdapter.ts
 
-Extracts the traversal entry point from a raw `FiberRoot` (`getFiberTraversalEntry`), and validates/narrows a raw unmount value into a Fiber-shaped object (`asFiberNode`). The only module allowed to know the shape of a raw Fiber/FiberRoot — including `alternate` (used for identity resolution), `memoizedProps`/`memoizedState` (used for render detection), the `HookNode` type describing a single node of a function component's hooks linked list (used by Hook Inspector), and the `ContextDependencyNode` type describing a single node of a fiber's context dependency list (used by Context Inspector).
+Extracts the traversal entry point from a raw `FiberRoot` (`getFiberTraversalEntry`), and validates/narrows a raw unmount value into a Fiber-shaped object (`asFiberNode`). The only module allowed to know the shape of a raw Fiber/FiberRoot — including `alternate` (used for identity resolution), `memoizedProps`/`memoizedState` (used for render detection), `pendingProps` (optional; read only by `hookNameInspector.ts` when re-invoking a component), the `HookNode` type describing a single node of a function component's hooks linked list (used by Hook Inspector and, on-demand, Hook Name Inspector), and the `ContextDependencyNode` type describing a single node of a fiber's context dependency list (used by Context Inspector).
+
+### fiberHandleRegistry.ts
+
+The first module in this codebase to retain a live Fiber reference beyond a single synchronous call. A `Map<ComponentId, FiberNode>`, written by Traversal on every commit (`setFiberHandle()`), read on-demand by `createInsight.ts`'s `inspectHookNames()` (`getFiberHandle()`), and explicitly cleared by `componentDiscoveryPlugin.ts`'s `onUnmount` (`deleteFiberHandle()`) to bound memory. See "On-demand Hook Name Resolution" above for why this retention is necessary and what would leak without the unmount cleanup.
+
+### dispatcherAccess.ts
+
+Best-effort access to React's currently-active hooks dispatcher slot, read directly from the `react` package's own internals (`__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE.H` on React 19, with a pre-19 `.ReactCurrentDispatcher.current` fallback) rather than through this package's own DevTools hook. Used exclusively by `hookNameInspector.ts`. Returns `undefined` where these internals aren't available (most likely: production builds), which callers must treat as "on-demand hook name resolution unavailable right now", not an error condition.
 
 ### traversal.ts
 
-Walks a Fiber tree from the entry point, filtering to function/class component fibers only, and assigns stable per-Fiber ids via a `WeakMap` (`getFiberId`, exported so unmount handling can resolve the same id). Resolves whether each fiber was actually rendered this commit (vs. merely present or merely cloned along the reconciliation path) by comparing `memoizedProps`/`memoizedState` against a self-maintained last-observed-values snapshot per stable id, not against Fiber object identity (`resolveFiberIdentity`; see `DECISIONS.md`, 2026-07-26). Also calls Hook Inspector and Context Inspector for each component fiber to produce its `hooks`/`contexts` summaries. Produces `DiscoveredComponent[]`, each carrying `rendered: boolean`, `hooks: HookSummary[]`, and `contexts: ContextSummary[]`.
+Walks a Fiber tree from the entry point, filtering to function/class component fibers only, and assigns stable per-Fiber ids via a `WeakMap` (`getFiberId`, exported so unmount handling can resolve the same id). Resolves whether each fiber was actually rendered this commit (vs. merely present or merely cloned along the reconciliation path) by comparing `memoizedProps`/`memoizedState` against a self-maintained last-observed-values snapshot per stable id, not against Fiber object identity (`resolveFiberIdentity`; see `DECISIONS.md`, 2026-07-26). Also calls Hook Inspector and Context Inspector for each component fiber to produce its `hooks`/`contexts` summaries, and records a fiber handle for the component in `fiberHandleRegistry.ts` (2026-08-24). Produces `DiscoveredComponent[]`, each carrying `rendered: boolean`, `hooks: HookSummary[]`, and `contexts: ContextSummary[]`.
 
 ### hookInspector.ts
 
-Walks a function component Fiber's hooks linked list (`fiber.memoizedState`) and classifies each hook by structural shape alone (`classifyHook()`), producing `HookSummary[]` (`inspectHooks()`). Guards against class components via `type.prototype.isReactComponent`. For hooks classified as `kind: "state"`, delegates to `hookValuePreview.ts` to attach a `value` preview; other kinds carry no `value`. Never re-renders or invokes user code. See "Hook Tracking (structural)" above for the full design rationale and known limitations.
+Walks a function component Fiber's hooks linked list (`fiber.memoizedState`) and classifies each hook by structural shape alone (`classifyHook()`), producing `HookSummary[]` (`inspectHooks()`). Guards against class components via `isClassComponentType()` (exported since 2026-08-24 specifically so `hookNameInspector.ts` can reuse the same check rather than duplicating it). For hooks classified as `kind: "state"`, `"ref"`, or `"memo-like"` (extended from `state`-only on 2026-08-24), delegates to `hookValuePreview.ts` to attach a `value` preview; other kinds carry no `value`. Never re-renders or invokes user code. See "Hook Tracking (structural)" above for the full design rationale and known limitations.
 
 ### hookValuePreview.ts
 
-Pure, side-effect-free translation from an arbitrary JS value (a hook's `memoizedState`, or — as of 2026-07-29 — a Context's `memoizedValue`) to a shallow, circular-safe preview (`previewHookValue()`): primitives pass through unchanged; a plain object or array is walked exactly one level, with any nested object/array/function/class-instance/etc. replaced by a `{ __type: string }` descriptor rather than recursed into. Capped at 20 entries per object/array. Circular-reference safety is a structural property of never recursing past depth 1, not an explicit `seen`-set guard. Never invokes functions found in the value. See `DECISIONS.md`, 2026-07-28. Despite the name (kept for historical/import-path stability), this module is no longer hook-specific — Context Inspector reuses it unchanged.
+Pure, side-effect-free translation from an arbitrary JS value (a hook's `memoizedState`, or — as of 2026-07-29 — a Context's `memoizedValue`) to a shallow, circular-safe preview (`previewHookValue()`): primitives pass through unchanged (strings capped at `MAX_STRING_LENGTH = 200` characters as of 2026-08-24, truncated with a `"… (N chars total)"` suffix); a plain object or array is walked exactly one level, with any nested object/array/function/class-instance/etc. replaced by a `{ __type: string }` descriptor rather than recursed into, and capped at 20 entries (`MAX_PREVIEW_ENTRIES`). Circular-reference safety is a structural property of never recursing past depth 1, not an explicit `seen`-set guard. Never invokes functions found in the value. See `DECISIONS.md`, 2026-07-28 and 2026-08-24 (string cap, found via Playground once `ref` values were previewed for the first time and surfaced an unbounded string in `InsightDebugPanel`'s own snapshot ref). Despite the name (kept for historical/import-path stability), this module is no longer hook-specific — Context Inspector reuses it unchanged.
+
+### hookNameInspector.ts
+
+**On-demand only — not part of the always-on pipeline.** Exports `resolveHookNames(fiber, dispatcherRef)`, which re-invokes a function component's `type` with an instrumented dispatcher swapped into the slot `dispatcherAccess.ts` resolves, to recover exact built-in hook names and one level of enclosing custom hook name. See "On-demand Hook Name Resolution" above for the full design. Never mutates real hook state; suppresses `console.*` during the call; always restores the real dispatcher in a `finally` block; returns `undefined` (never throws) if the fiber isn't a plain function component or if re-invocation itself errors.
 
 ### contextInspector.ts
 
@@ -595,8 +688,8 @@ Wires the discovery pipeline into the Runtime plugin lifecycle. Registered eager
 Responsibilities:
 
 - Connect the Hook Adapter on `setup()`.
-- On commit: record the commit on the active root if one is registered (`RootRegistry.recordCommit()`); run Traversal (including Hook Inspector and Context Inspector) + Mapper using the active root's id, or a `"pending"` fallback if no root is registered yet; call `ComponentRegistry.sync()` for each discovered component.
-- On unmount: resolve the Fiber id and call `ComponentRegistry.markUnmounted()`, preserving the component record instead of removing it.
+- On commit: record the commit on the active root if one is registered (`RootRegistry.recordCommit()`); run Traversal (including Hook Inspector and Context Inspector, and fiber-handle recording) + Mapper using the active root's id, or a `"pending"` fallback if no root is registered yet; call `ComponentRegistry.sync()` for each discovered component.
+- On unmount: resolve the Fiber id, call `ComponentRegistry.markUnmounted()` (preserving the component record instead of removing it), and call `fiberHandleRegistry.delete()` (added 2026-08-24, to bound the fiber handle registry's memory).
 - Disconnect the Hook Adapter on `destroy()`.
 
 Follows the same `definePlugin()` pattern as `rootLifecyclePlugin`.
@@ -664,6 +757,7 @@ Current contents:
 - Internal Component model (including render tracking, structural hook tracking, structural context tracking, and unmount history)
 - ComponentRegistry
 - Component Discovery pipeline (`discovery/`), including the one public exception, `installReactDevtoolsHook()`
+- On-demand hook name resolution (`discovery/dispatcherAccess.ts`, `discovery/fiberHandleRegistry.ts`, `discovery/hookNameInspector.ts`) — reachable only through the public `Insight.inspectHookNames()`, never exported directly
 - Root lifecycle hook (`plugins/`)
 - Internal lifecycle plugins (`plugins/`)
 
@@ -683,6 +777,7 @@ Current exports:
 - `useInsight`
 - `Insight`
 - `ComponentSnapshot`
+- `InspectedHookName` (added 2026-08-24 — the return element type of `Insight.inspectHookNames()`; exported as a standalone named type, unlike `HookKind`/`HookSummary`/`ContextSummary`, because it is itself a top-level method return type rather than a field nested inside `ComponentSnapshot`)
 
 Internal modules must never be re-exported, except `installReactDevtoolsHook` (documented exception — see "Internal Architecture" above). `HookKind`/`HookSummary`/`HookValuePreview`/`ContextSummary` are not exported separately; they are inlined into `ComponentSnapshot.hooks`'/`ComponentSnapshot.contexts`' element types, since there is no current consumer needing them as standalone named types.
 
@@ -694,26 +789,28 @@ The React package follows the same quality standards as the Core package.
 
 Current test coverage includes:
 
-- `createInsight()`, including `getComponents()` and eager Component Discovery registration (a commit observed before `InsightProvider` even mounts)
+- `createInsight()`, including `getComponents()`, `getComponent(id)`, `inspectHookNames(id)`, and eager Component Discovery registration (a commit observed before `InsightProvider` even mounts)
 - `InsightProvider`
 - `useInsight()`
 - `useInsightLifecycle()` under real React `<StrictMode>` rendering (register/unregister serialization — no console errors, registry ends up correctly populated)
 - `RootRegistry`, including `recordCommit()`
-- `ComponentRegistry` (`sync()` mount/update behavior, `markUnmounted()`, render-count accounting only incrementing when `rendered: true`, `hooks`/`contexts` updated whenever they differ from stored state, `subscribe()`/`onChange()` notification — including the dirty-check that skips notifying when nothing actually changed)
+- `ComponentRegistry` (`sync()` mount/update behavior — including per-field dirty-check granularity for `rootId`/`displayName`/`parentId` individually, not just `hooks`/`contexts` — `markUnmounted()`, render-count accounting only incrementing when `rendered: true`, `has()`/`values()`/`unregister()`'s untracked-id path, `subscribe()`/`onChange()` notification)
 - Root Lifecycle Plugin
-- Component Discovery Plugin (commit/sync, commits that precede root registration — `"pending"` rootId and self-heal on the next commit, unmount via `markUnmounted()`, disconnect on destroy)
+- Component Discovery Plugin (commit/sync, commits that precede root registration — `"pending"` rootId and self-heal on the next commit, unmount via `markUnmounted()`, fiber handle cleared on unmount, disconnect on destroy)
 - Provider lifecycle integration
 - Mount / Unmount synchronization
 - Public API encapsulation
 - Fiber Adapter (`getFiberTraversalEntry`)
-- Traversal (filtering, parent resolution, stable ids via `current`/`alternate` identity, and `rendered` detection via last-observed props/state comparison — including cloned-but-bailed-out ancestors, recycled direct-hit fibers, and repeated unrelated commits after a component's last real update)
-- Hook Inspector (`classifyHook()` per hook shape — state, ref, memo-like, effect, layout-effect, unknown; hook order preservation across a multi-hook chain; class components returning an empty array instead of misreading `this.state`; `value` present only for `state`-kind hooks)
-- Hook Value Preview (`previewHookValue()` — primitives, shallow object/array preview, nested structures described by type not recursed, functions described without invocation, class instances described by constructor name, self-referential/circular values handled without throwing, large arrays/objects capped)
+- Fiber Handle Registry (set/get/delete/overwrite)
+- Traversal (filtering, parent resolution, stable ids via `current`/`alternate` identity, `rendered` detection via last-observed props/state comparison — including cloned-but-bailed-out ancestors, recycled direct-hit fibers, and repeated unrelated commits after a component's last real update — and fiber handle recording)
+- Hook Inspector (`classifyHook()` per hook shape — state, ref, memo-like, effect, layout-effect, unknown; hook order preservation across a multi-hook chain; class components returning an empty array instead of misreading `this.state`; `value` present for `state`/`ref`/`memo-like` kinds)
+- Hook Value Preview (`previewHookValue()` — primitives, string-length capping at the top level and nested inside objects, shallow object/array preview, nested structures described by type not recursed, functions described without invocation, class instances described by constructor name, self-referential/circular values handled without throwing, large arrays/objects capped)
+- Hook Name Inspector (`resolveHookNames()`, tested against **real** React rendering via `@testing-library/react` rather than plain fixtures — `useState`/`useReducer` disambiguation, `useMemo`/`useCallback` disambiguation, custom hook name resolution, no `customHookName` when called directly in the component body, no real hook-state mutation across repeated calls, console suppression during re-invocation, graceful `undefined` on re-invocation error, `undefined` for class components)
 - Component Mapper (structural translation, including `rendered`, `hooks`, and `contexts`)
 - Hook Adapter (`installReactDevtoolsHook()` idempotency and stub shape including `inject()`, `connectHookAdapter()` installation, chaining, error isolation, disconnect)
 - Context Inspector (`inspectContexts()` — empty/absent dependency list, single and multiple distinct contexts, `displayName` resolution and its fallback to `"Context"`, identity-based deduplication of repeated dependency nodes, reuse of `previewHookValue()` for the `value` field, no leakage of the raw context/dependency object)
 
-**End-to-end validation (Playground):** unit tests alone were insufficient to catch several real bugs in this subsystem, because they invoke `hook.onCommitFiberRoot(...)` directly rather than going through React's actual `inject()`-based connection handshake or real effect/StrictMode timing. Playground renders a real component tree through `InsightProvider` and is the required final check for any change to Component Discovery, Render Tracking, Hook Tracking, or Context Tracking. See `DECISIONS.md`, 2026-07-21, 2026-07-27, and 2026-07-29.
+**End-to-end validation (Playground):** unit tests alone were insufficient to catch several real bugs in this subsystem, because they invoke `hook.onCommitFiberRoot(...)` directly rather than going through React's actual `inject()`-based connection handshake or real effect/StrictMode timing. Playground renders a real component tree through `InsightProvider` and is the required final check for any change to Component Discovery, Render Tracking, Hook Tracking, Context Tracking, or on-demand hook name resolution. For the latter specifically, Playground validation carries extra weight, since even `@testing-library/react`'s jsdom environment cannot fully guarantee real-browser dispatcher behavior. See `DECISIONS.md`, 2026-07-21, 2026-07-27, 2026-07-29, and 2026-08-24.
 
 Every public API should have automated tests before new features are introduced.
 
@@ -735,7 +832,10 @@ Every public API should have automated tests before new features are introduced.
 - `ComponentRegistry` is the sole owner of component lifecycle state; upstream discovery layers (Traversal, Mapper, Hook Inspector, Context Inspector) remain stateless.
 - Unmount preserves component history (`markUnmounted()`) rather than discarding it; `unregister()` remains available for hard removal where that is genuinely intended.
 - No field or method is added to a domain model without a real, current consumer (`ComponentNode.children` was removed for violating this).
-- Runtime observation stays zero-instrumentation and always-on (no `<Profiler>`, no re-render, no wrapped user code) for Render Tracking, structural Hook Tracking (including `state`-kind hook value previews), and structural Context Tracking (including its value previews) — all safely readable from already-committed Fiber state, no re-invocation needed; techniques that do require re-invoking user code (hook/custom-hook _name_ resolution) are deliberately scoped as a separate, on-demand capability rather than folded into the always-on traversal pass.
-- Serialization logic (`previewHookValue()`) is shared across every feature that needs an arbitrary-value preview, rather than reimplemented per feature — Context Tracking reused it unchanged rather than duplicating shallow/circular-safety logic.
+- Runtime observation stays zero-instrumentation and always-on (no `<Profiler>`, no re-render, no wrapped user code) for Render Tracking, structural Hook Tracking (including `state`/`ref`/`memo-like` hook value previews), and structural Context Tracking (including its value previews) — all safely readable from already-committed Fiber state, no re-invocation needed.
+- **On-demand hook name resolution (`Insight.inspectHookNames()`) is the one deliberate, documented exception to the zero-instrumentation rule above** — it genuinely re-invokes user code, and is therefore exposed as an explicit, separate, opt-in API rather than folded into the always-on `hooks` field, and must never be called automatically or wired into the discovery pipeline.
+- Retaining a live Fiber reference beyond a single commit (`fiberHandleRegistry.ts`) is permitted only for this one on-demand capability, and must always be paired with cleanup on unmount to bound memory.
+- Serialization logic (`previewHookValue()`) is shared across every feature that needs an arbitrary-value preview, rather than reimplemented per feature — Context Tracking, and the `ref`/`memo-like` value preview extension, both reused it unchanged rather than duplicating shallow/circular-safety or bounding logic.
+- "Inspector implementation" (presentation/orchestration on top of `Insight` data) belongs in `@react-insight/inspector`, not this package — this package owns only the underlying capability (`inspectHookNames()`) that Inspector-style consumers need.
 - Public API remains minimal and stable.
 - Internal implementation may evolve without breaking consumers.
