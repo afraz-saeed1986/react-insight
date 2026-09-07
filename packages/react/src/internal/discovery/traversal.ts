@@ -1,4 +1,5 @@
 import type { FiberNode } from "./fiberAdapter";
+import { REACT_FORWARD_REF_TYPE, REACT_MEMO_TYPE } from "./fiberAdapter";
 import type { DiscoveredComponent } from "./discoveredComponent";
 import { inspectHooks } from "./hookInspector";
 import { inspectContexts } from "./contextInspector";
@@ -72,12 +73,48 @@ export function getFiberId(fiber: FiberNode): string {
 }
 
 function isComponentFiber(fiber: FiberNode): boolean {
-  return typeof fiber.type === "function";
+  if (typeof fiber.type === "function") return true;
+
+  // memo(...) and forwardRef(...) wrap the real component in an
+  // object rather than exposing a plain function as fiber.type —
+  // without this, these components are entirely invisible to the
+  // whole discovery pipeline (Render Tracking, Hook Tracking, Context
+  // Tracking too, not just this check). See DECISIONS.md, 2026-08-24.
+  const type = fiber.type as { $$typeof?: symbol } | null;
+  return type?.$$typeof === REACT_MEMO_TYPE || type?.$$typeof === REACT_FORWARD_REF_TYPE;
 }
 
 function getDisplayName(fiber: FiberNode): string {
-  const type = fiber.type as { displayName?: string; name?: string } | null;
-  return type?.displayName ?? type?.name ?? "Anonymous";
+  return resolveDisplayName(fiber.type);
+}
+
+/**
+ * Recursive so memo(forwardRef(...)) resolves correctly: unwraps one
+ * layer at a time until it finds an explicit displayName or a real
+ * function to read .name from.
+ */
+function resolveDisplayName(type: unknown): string {
+  if (type && typeof type === "object") {
+    const t = type as {
+      $$typeof?: symbol;
+      displayName?: string;
+      type?: unknown;
+      render?: { name?: string; displayName?: string };
+    };
+
+    if (t.displayName) return t.displayName;
+
+    if (t.$$typeof === REACT_MEMO_TYPE) {
+      return resolveDisplayName(t.type);
+    }
+
+    if (t.$$typeof === REACT_FORWARD_REF_TYPE) {
+      return t.render?.displayName ?? t.render?.name ?? "Anonymous";
+    }
+  }
+
+  const fn = type as { displayName?: string; name?: string } | null;
+  return fn?.displayName ?? fn?.name ?? "Anonymous";
 }
 
 /**

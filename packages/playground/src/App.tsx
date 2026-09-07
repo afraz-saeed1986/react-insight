@@ -1,7 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, memo, forwardRef } from "react";
 import { useInsight } from "@react-insight/react";
 import { inspectComponent } from "@react-insight/inspector";
 import type { ComponentInspection } from "@react-insight/inspector";
+
+
 
 function Display({ count }: { count: number }) {
   return <p>Count: {count}</p>;

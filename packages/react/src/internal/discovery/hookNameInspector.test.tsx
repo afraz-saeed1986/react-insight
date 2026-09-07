@@ -1,4 +1,4 @@
-import { Component, useCallback, useMemo, useReducer, useState } from "react";
+import { Component, forwardRef, memo, useCallback, useMemo, useReducer, useState } from "react";
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -30,8 +30,19 @@ function getFiberFromDom(node: Node): FiberNode & { return?: FiberNode | null } 
 function findComponentFiber(node: Node, type: unknown): FiberNode {
   let current: (FiberNode & { return?: FiberNode | null }) | null = getFiberFromDom(node);
 
+  // React's "SimpleMemoComponent" optimization sets fiber.type directly
+  // to the *inner* function for a memo(fn) with no custom compare —
+  // fiber.type is already unwrapped, never equal to the memo wrapper
+  // reference itself. Confirmed via a real test failure, not assumed.
+  // This test-only helper accounts for that by also accepting a match
+  // against the memo wrapper's own .type field.
+  const memoInnerType =
+    type && typeof type === "object" ? (type as { type?: unknown }).type : undefined;
+
   while (current) {
-    if (current.type === type) return current;
+    if (current.type === type || (memoInnerType !== undefined && current.type === memoInnerType)) {
+      return current;
+    }
     current = current.return ?? null;
   }
 
@@ -193,4 +204,52 @@ describe("resolveHookNames", () => {
 
     expect(resolveHookNames(fiber, requireDispatcherRef())).toBeUndefined();
   });
+
+  
+  it("resolves hook names inside a forwardRef component", () => {
+    const Inner = forwardRef<HTMLDivElement, { label: string }>((props, ref) => {
+      useState(props.label);
+      return <div ref={ref} />;
+    });
+    Inner.displayName = "InnerForwardRef";
+
+    const { container } = render(<Inner label="hi" />);
+    const fiber = findComponentFiber(container.firstChild!, Inner);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useState" },
+    ]);
+  });
+
+  it("resolves hook names inside a memo component", () => {
+    const MemoComponent = memo(function MemoInner() {
+      useState(0);
+      return <div />;
+    });
+
+    const { container } = render(<MemoComponent />);
+    const fiber = findComponentFiber(container.firstChild!, MemoComponent);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useState" },
+    ]);
+  });
+
+  it("resolves hook names inside memo(forwardRef(...))", () => {
+    const Combo = memo(
+      forwardRef<HTMLDivElement, Record<string, never>>((_props, ref) => {
+        useState(0);
+        return <div ref={ref} />;
+      }),
+    );
+
+    const { container } = render(<Combo />);
+    const fiber = findComponentFiber(container.firstChild!, Combo);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useState" },
+    ]);
+  });
+
+
 });

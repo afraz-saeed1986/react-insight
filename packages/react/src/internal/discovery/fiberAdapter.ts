@@ -10,9 +10,15 @@ export interface FiberNode {
    * Optional (not required) purely so every existing fixture across
    * the discovery test suite keeps compiling unmodified — real Fiber
    * objects always have this set. Only hookNameInspector.ts reads it
-   * (needed to re-invoke fiber.type(fiber.pendingProps)).
+   * (needed to re-invoke a forwardRef component's render(props, ref)).
    */
   pendingProps?: unknown;
+  /**
+   * Same optionality rationale as pendingProps. Only meaningful (and
+   * only read) for forwardRef components — a plain function or memo
+   * component's invocation ignores it.
+   */
+  ref?: unknown;
 }
 
 export interface HookNode {
@@ -20,6 +26,22 @@ export interface HookNode {
   queue: unknown;
   next: HookNode | null;
 }
+
+
+/**
+ * Global symbols React itself registers via Symbol.for(...) for the
+ * memo() and forwardRef() wrapper types. Any code — including ours —
+ * can obtain the exact same symbol reference via Symbol.for with the
+ * same key, without importing React internals or the react-is
+ * package: these two specific symbols have been stable since memo/
+ * forwardRef were introduced and are the same technique react-is
+ * itself uses. Defined here (fiberAdapter.ts) since this is the only
+ * module allowed to know raw Fiber/type shape; consumed by
+ * traversal.ts (isComponentFiber/getDisplayName) and
+ * hookNameInspector.ts (resolveInvocable/resolveInvocableName).
+ */
+export const REACT_MEMO_TYPE = Symbol.for("react.memo");
+export const REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref");
 
 /**
  * A single node in a Fiber's context dependency list

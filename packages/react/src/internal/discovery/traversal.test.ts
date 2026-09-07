@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { traverse, getFiberId } from "./traversal";
 import type { FiberNode } from "./fiberAdapter";
+import { REACT_FORWARD_REF_TYPE, REACT_MEMO_TYPE } from "./fiberAdapter";
 import { getFiberHandle } from "./fiberHandleRegistry";
 
 function App() {}
@@ -199,5 +200,57 @@ it("marks an updated fiber as rendered when its props or state actually changed"
 
     expect(getFiberHandle(discovered!.id)).toBe(appFiber);
   });
+
+
+  
+describe("memo/forwardRef discovery", () => {
+  function memoType(inner: unknown, displayName?: string) {
+    return { $$typeof: REACT_MEMO_TYPE, type: inner, displayName };
+  }
+
+  function forwardRefType(render: (...args: unknown[]) => unknown, displayName?: string) {
+    return { $$typeof: REACT_FORWARD_REF_TYPE, render, displayName };
+  }
+
+  it("discovers a memo-wrapped component and resolves its inner function name", () => {
+    function Inner() {}
+    const wrapped = memoType(Inner);
+    const wrappedFiber = fiber(wrapped);
+
+    const [result] = traverse(wrappedFiber, "root-1");
+
+    expect(result?.displayName).toBe("Inner");
+  });
+
+  it("discovers a forwardRef-wrapped component and resolves its render function name", () => {
+    function InnerRender() {}
+    const wrapped = forwardRefType(InnerRender);
+    const wrappedFiber = fiber(wrapped);
+
+    const [result] = traverse(wrappedFiber, "root-1");
+
+    expect(result?.displayName).toBe("InnerRender");
+  });
+
+  it("discovers memo(forwardRef(...)) and resolves the innermost render function name", () => {
+    function InnerRender() {}
+    const combo = memoType(forwardRefType(InnerRender));
+    const wrappedFiber = fiber(combo);
+
+    const [result] = traverse(wrappedFiber, "root-1");
+
+    expect(result?.displayName).toBe("InnerRender");
+  });
+
+  it("prefers an explicit displayName over the inner function name, for both memo and forwardRef", () => {
+    function Inner() {}
+    const wrapped = memoType(Inner, "ExplicitMemoName");
+    const wrappedFiber = fiber(wrapped);
+
+    const [result] = traverse(wrappedFiber, "root-1");
+
+    expect(result?.displayName).toBe("ExplicitMemoName");
+  });
+});
 
 });

@@ -1,6 +1,61 @@
 import type { FiberNode, HookNode } from "./fiberAdapter";
+import { REACT_FORWARD_REF_TYPE, REACT_MEMO_TYPE } from "./fiberAdapter";
 import { isClassComponentType } from "./hookInspector";
 import type { DispatcherRef } from "./dispatcherAccess";
+
+/**
+ * Resolves the actual invocable render function for a Fiber's `type`,
+ * unwrapping memo/forwardRef wrappers recursively (covers
+ * memo(forwardRef(...))). Returns undefined for class components or
+ * any type this project doesn't know how to re-invoke safely.
+ */
+function resolveInvocable(type: unknown): ((props: unknown, ref: unknown) => unknown) | undefined {
+  if (typeof type === "function") {
+    if (isClassComponentType(type)) return undefined;
+    return (props) => (type as (p: unknown) => unknown)(props);
+  }
+
+  if (type && typeof type === "object") {
+    const t = type as { $$typeof?: symbol; type?: unknown; render?: (props: unknown, ref: unknown) => unknown };
+
+    if (t.$$typeof === REACT_FORWARD_REF_TYPE && t.render) {
+      const render = t.render;
+      return (props, ref) => render(props, ref);
+    }
+
+    if (t.$$typeof === REACT_MEMO_TYPE) {
+      return resolveInvocable(t.type);
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Resolves the real render function's .name, for comparing against
+ * call-stack frames in resolveCustomHookName() below — not a
+ * display-oriented name. For forwardRef this is render.name; for
+ * memo it recurses into the wrapped type.
+ */
+function resolveInvocableName(type: unknown): string {
+  if (typeof type === "function") {
+    return (type as { name?: string }).name ?? "";
+  }
+
+  if (type && typeof type === "object") {
+    const t = type as { $$typeof?: symbol; type?: unknown; render?: { name?: string } };
+
+    if (t.$$typeof === REACT_FORWARD_REF_TYPE) {
+      return t.render?.name ?? "";
+    }
+
+    if (t.$$typeof === REACT_MEMO_TYPE) {
+      return resolveInvocableName(t.type);
+    }
+  }
+
+  return "";
+}
 
 export interface InspectedHookName {
   readonly index: number;
@@ -63,25 +118,34 @@ function resolveCustomHookName(
 ): string | undefined {
   if (!stack) return undefined;
 
+  // Anonymous/top-level frames (e.g. an inline arrow function passed
+  // directly to forwardRef()) render as "at file:line:col" with no
+  // function name and no parentheses — confirmed via a real failure,
+  // not assumed. Such a frame becomes `undefined` here rather than
+  // being dropped, so positions stay aligned with the skip-loop below
+  // (dropping it would shift every later frame's index, potentially
+  // matching the wrong frame as the "true caller").
   const frameNames = stack
     .split("\n")
     .slice(1) // drop the literal "Error" line
     .map((line) => {
-      const raw = /at\s+([^\s(]+)/.exec(line)?.[1];
-      if (!raw) return undefined;
+      // Requires an actual "name (" form — a bare "at file:line:col"
+      // (no trailing "(") does not match, correctly yielding undefined.
+      const match = /^\s*at\s+(.+?)\s+\(/.exec(line);
+      const captured = match?.[1];
+      if (!captured) return undefined;
+
       // Strips any wrapper prefix V8 reports (e.g. "Object.useState",
       // "Proxy.useState" — our dispatcher shim is accessed through a
       // Proxy) by keeping only the segment after the last ".". Plain
       // frame names with no "." (e.g. "StateComponent") are returned
-      // unchanged. Confirmed empirically against real stack output,
-      // not assumed.
-      const parts = raw.split(".");
+      // unchanged. Confirmed empirically against real stack output.
+      const parts = captured.split(".");
       return parts[parts.length - 1];
-    })
-    .filter((name): name is string => Boolean(name));
+    });
 
-  let i = 0;
-  while (i < frameNames.length && INTERNAL_FRAME_NAMES.has(frameNames[i]!)) {
+   let i = 0;
+  while (i < frameNames.length && INTERNAL_FRAME_NAMES.has(frameNames[i] ?? "")) {
     i += 1;
   }
 
@@ -194,8 +258,8 @@ function createInstrumentedDispatcher(
  * cannot recover. This genuinely re-executes the component's render
  * body; if it has real side effects, they run again.
  *
- * Scoped to plain function components only (not memo/forwardRef,
- * not class components) for this slice.
+ * Supports plain function components, memo(...), forwardRef(...), and
+ * memo(forwardRef(...)) — not class components.
  *
  * Never throws: returns undefined if the fiber isn't inspectable this
  * way, or if re-invocation itself throws (caller's responsibility is
@@ -205,11 +269,13 @@ export function resolveHookNames(
   fiber: FiberNode,
   dispatcherRef: DispatcherRef,
 ): ReadonlyArray<InspectedHookName> | undefined {
-  if (typeof fiber.type !== "function" || isClassComponentType(fiber.type)) {
+  const invoke = resolveInvocable(fiber.type);
+
+  if (!invoke) {
     return undefined;
   }
 
-  const componentFunctionName = (fiber.type as { name?: string }).name ?? "";
+  const componentFunctionName = resolveInvocableName(fiber.type);
   const calls: InspectedHookName[] = [];
   let hookIndex = 0;
   let cursor = fiber.memoizedState as HookNode | null;
@@ -249,11 +315,11 @@ export function resolveHookNames(
     }
   }
 
-  try {
+   try {
     dispatcherRef.current = dispatcher;
-    (fiber.type as (props: unknown) => unknown)(fiber.pendingProps);
+    invoke(fiber.pendingProps, fiber.ref);
     return calls;
-  } catch {
+  }catch {
     return undefined;
   } finally {
     dispatcherRef.current = previousDispatcher;
