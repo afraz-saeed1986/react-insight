@@ -118,12 +118,6 @@ const insight = useInsight();
   );
 }
 
-// function StateShapeProbe() {
-//   const [obj] = useState({ nested: { a: 1 }, label: "hi" });
-//   const [arr] = useState([1, 2, 3]);
-//   return <p>State shape probe</p>;
-// }
-
 const ThemeContext = createContext("light");
 ThemeContext.displayName = "ThemeContext";
 
@@ -139,7 +133,6 @@ export function App() {
     <div>
       <h1>React Insight Playground</h1>
       <Counter />
-      {/* <StateShapeProbe /> */}
       <button onClick={() => setShowGreeting((v) => !v)}>
         {showGreeting ? "Unmount" : "Mount"} Greeting
       </button>
