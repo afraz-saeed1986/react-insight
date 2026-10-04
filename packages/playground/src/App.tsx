@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from "react";
 
-import { DevtoolsPanel } from "./devtools/DevtoolsPanel";
+import { DevtoolsPanel } from "@react-insight/devtools";
 
 function Display({ count }: { count: number }) {
   return <p>Count: {count}</p>;
