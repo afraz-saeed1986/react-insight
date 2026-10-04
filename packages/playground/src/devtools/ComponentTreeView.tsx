@@ -1,4 +1,5 @@
 import type { ComponentTreeNode } from "./buildComponentTree";
+import { summarizeComponent } from "./summarizeComponent";
 
 const FLASH_KEYFRAMES =
   "@keyframes ri-flash { from { background: #fde68a; } to { background: transparent; } }";
@@ -48,6 +49,7 @@ function TreeList({ nodes, selectedId, onSelect, depth }: TreeListProps) {
         const { snapshot } = node;
         const selected = snapshot.id === selectedId;
         const unmounted = snapshot.status === "unmounted";
+        const summary = summarizeComponent(snapshot);
 
         return (
           <li key={snapshot.id}>
@@ -75,6 +77,9 @@ function TreeList({ nodes, selectedId, onSelect, depth }: TreeListProps) {
                   {unmounted ? " (unmounted)" : ""}
                 </small>
               </span>
+              {summary !== "" && (
+                <small style={{ opacity: 0.6 }}> — {summary}</small>
+              )}
             </button>
             {node.children.length > 0 && (
               <TreeList
