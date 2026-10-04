@@ -8,6 +8,7 @@ import { buildComponentTree } from "./buildComponentTree";
 import { ComponentDetails } from "./ComponentDetails";
 import { ComponentTreeView } from "./ComponentTreeView";
 import { excludeSubtrees } from "./excludeSubtrees";
+import { filterByMinRenders } from "./filterByMinRenders";
 import { filterComponentTree } from "./filterComponentTree";
 
 /**
@@ -32,6 +33,7 @@ export function DevtoolsPanel() {
   const [components, setComponents] = useState<readonly ComponentSnapshot[]>([]);
   const [includeUnmounted, setIncludeUnmounted] = useState(true);
   const [query, setQuery] = useState("");
+  const [minRendersInput, setMinRendersInput] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspection, setInspection] = useState<ComponentInspection | null>(null);
 
@@ -68,13 +70,18 @@ export function DevtoolsPanel() {
     };
   }, [insight, refresh]);
 
+  const minRenders = Number.parseInt(minRendersInput, 10);
+
   const tree = useMemo(
     () =>
-      filterComponentTree(
-        buildComponentTree(components, { includeUnmounted }),
-        query,
+      filterByMinRenders(
+        filterComponentTree(
+          buildComponentTree(components, { includeUnmounted }),
+          query,
+        ),
+        minRenders,
       ),
-    [components, includeUnmounted, query],
+    [components, includeUnmounted, query, minRenders],
   );
 
   // Inspection re-executes the component's render body (see
@@ -116,7 +123,15 @@ export function DevtoolsPanel() {
         type="search"
         placeholder="Filter by name"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => setQuery(e.target.value)}
+      />{" "}
+      <input
+        type="number"
+        min={1}
+        placeholder="Min renders"
+        value={minRendersInput}
+        onChange={(e) => setMinRendersInput(e.target.value)}
+        style={{ width: 110 }}
       />
 
       <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
