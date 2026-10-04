@@ -15,7 +15,7 @@ export function ComponentTreeView({
   onSelect,
 }: ComponentTreeViewProps) {
   if (nodes.length === 0) {
-    return <p>No components tracked.</p>;
+        return <p>No components to show.</p>;
   }
 
    return (

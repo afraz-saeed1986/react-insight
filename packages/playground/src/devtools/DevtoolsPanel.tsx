@@ -8,6 +8,7 @@ import { buildComponentTree } from "./buildComponentTree";
 import { ComponentDetails } from "./ComponentDetails";
 import { ComponentTreeView } from "./ComponentTreeView";
 import { excludeSubtrees } from "./excludeSubtrees";
+import { filterComponentTree } from "./filterComponentTree";
 
 /**
  * Must match this component's function name: the panel (and everything
@@ -30,6 +31,7 @@ export function DevtoolsPanel() {
 
   const [components, setComponents] = useState<readonly ComponentSnapshot[]>([]);
   const [includeUnmounted, setIncludeUnmounted] = useState(true);
+  const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspection, setInspection] = useState<ComponentInspection | null>(null);
 
@@ -67,8 +69,12 @@ export function DevtoolsPanel() {
   }, [insight, refresh]);
 
   const tree = useMemo(
-    () => buildComponentTree(components, { includeUnmounted }),
-    [components, includeUnmounted],
+    () =>
+      filterComponentTree(
+        buildComponentTree(components, { includeUnmounted }),
+        query,
+      ),
+    [components, includeUnmounted, query],
   );
 
   // Inspection re-executes the component's render body (see
@@ -104,8 +110,14 @@ export function DevtoolsPanel() {
           checked={includeUnmounted}
           onChange={(e) => setIncludeUnmounted(e.target.checked)}
         />{" "}
-        Show unmounted
-      </label>
+             Show unmounted
+      </label>{" "}
+      <input
+        type="search"
+        placeholder="Filter by name"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
 
       <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
         <div style={{ minWidth: 260 }}>
