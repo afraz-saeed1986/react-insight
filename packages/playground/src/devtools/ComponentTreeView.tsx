@@ -1,5 +1,8 @@
 import type { ComponentTreeNode } from "./buildComponentTree";
 
+const FLASH_KEYFRAMES =
+  "@keyframes ri-flash { from { background: #fde68a; } to { background: transparent; } }";
+
 interface ComponentTreeViewProps {
   readonly nodes: readonly ComponentTreeNode[];
   readonly selectedId: string | null;
@@ -15,13 +18,16 @@ export function ComponentTreeView({
     return <p>No components tracked.</p>;
   }
 
-  return (
-    <TreeList
-      nodes={nodes}
-      selectedId={selectedId}
-      onSelect={onSelect}
-      depth={0}
-    />
+   return (
+    <>
+      <style>{FLASH_KEYFRAMES}</style>
+      <TreeList
+        nodes={nodes}
+        selectedId={selectedId}
+        onSelect={onSelect}
+        depth={0}
+      />
+    </>
   );
 }
 
@@ -58,11 +64,17 @@ function TreeList({ nodes, selectedId, onSelect, depth }: TreeListProps) {
                 fontStyle: unmounted ? "italic" : "normal",
               }}
             >
-              {snapshot.displayName}{" "}
-              <small>
-                ×{snapshot.renderCount}
-                {unmounted ? " (unmounted)" : ""}
-              </small>
+                         {/* key={renderCount} remounts the label on every render so the flash animation replays */}
+              <span
+                key={snapshot.renderCount}
+                style={{ animation: "ri-flash 600ms ease-out" }}
+              >
+                {snapshot.displayName}{" "}
+                <small>
+                  ×{snapshot.renderCount}
+                  {unmounted ? " (unmounted)" : ""}
+                </small>
+              </span>
             </button>
             {node.children.length > 0 && (
               <TreeList
