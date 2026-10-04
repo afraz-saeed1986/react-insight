@@ -215,9 +215,9 @@ Current architecture includes:
 - Internal ComponentRegistry
 - Internal React lifecycle hook (root lifecycle only — see below)
 - Internal Root Lifecycle Plugin
-- Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector)
+- Internal Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector) — recognizes `memo(...)`/`forwardRef(...)`/`memo(forwardRef(...))` components since 2026-08-25, not just plain function/class components (see "memo()/forwardRef() Support" below)
 - Internal Component Discovery Plugin
-- Internal on-demand hook name resolution (Fiber Handle Registry, Dispatcher Access, Hook Name Inspector) — deliberately kept outside the always-on discovery pipeline
+- Internal on-demand hook name resolution (Fiber Handle Registry, Dispatcher Access, Hook Name Inspector) — deliberately kept outside the always-on discovery pipeline; also resolves `memo`/`forwardRef` components since 2026-08-25
 
 The React package owns React-specific behavior only and delegates all Runtime responsibilities to `@react-insight/core`. It also does not own Inspector presentation/orchestration logic — that is `@react-insight/inspector`'s responsibility (see "Inspector Package" below).
 
@@ -256,9 +256,21 @@ Two implementation decisions were reversed after research rather than assumed co
 
 ### Inspector Package
 
-`@react-insight/inspector`, added 2026-08-24, is the fourth workspace package and the first to depend on another React Insight package. It exports `inspectComponent(insight, id)`, combining `Insight.getComponent()` and `Insight.inspectHookNames()` into a single result — and nothing more for this initial slice (no React hook wrapper yet; no UI).
+`@react-insight/inspector`, added 2026-08-24, is the fourth workspace package and the first to depend on another React Insight package. It exports `inspectComponent(insight, id)`, combining `Insight.getComponent()` and `Insight.inspectHookNames()` into a single result.
 
 This package has no knowledge of React Fiber, dispatchers, or any React-internal concept — it depends only on `@react-insight/react`'s public `Insight` API. This realizes a boundary `REACT_ARCHITECTURE.md`'s Non-Goals section had already described before this package existed ("Inspector implementation" does not belong in `@react-insight/react`).
+
+**First real UI consumer, and a hook-wrapper decision with evidence behind it (2026-08-25).** Playground's `InsightDebugPanel` gained a real "Inspect" button per component row, calling `inspectComponent()` on click — the condition this package's React-hook-wrapper question (`useComponentInspection()`) was deliberately waiting on. With a real consumer in hand, the actual integration turned out to be a simple imperative call inside an `onClick` handler, with no reactive/effect-driven behavior needed. The hook wrapper remains deferred, now backed by evidence rather than speculation: it would only earn its place once some consumer needs the result to stay live (e.g. auto-re-inspecting on `onChange()`), which nothing does yet.
+
+### memo()/forwardRef() Support (2026-08-25)
+
+`isComponentFiber()` — the gate the entire discovery pipeline depends on — originally only recognized `typeof fiber.type === "function"`. `React.memo(...)` and `React.forwardRef(...)` both wrap the real component in an object (`fiber.type` is not a function for these), so these components were completely invisible everywhere: not discovered, never tracked, never rendered-tracked, never hook-tracked, and on-demand hook name resolution had nothing to re-invoke.
+
+This was initially scoped (in `ROADMAP.md`) as a narrow, on-demand-only extension to `inspectHookNames()`. Inspecting `traversal.ts` before starting found the real gap was in the always-on `isComponentFiber()` itself — the on-demand layer can only inspect fibers Traversal already recognizes as components in the first place.
+
+Recognition uses `Symbol.for("react.memo")` / `Symbol.for("react.forward_ref")` — global symbols React itself registers, obtainable by any code without importing React internals or adding the `react-is` package. Unlike the dispatcher-internals case (which genuinely changed between React versions), these two symbols have been stable since `memo`/`forwardRef` were introduced, so a local constant was preferred over a new dependency. Both `isComponentFiber()`/`getDisplayName()` (`traversal.ts`) and the on-demand re-invocation logic (`hookNameInspector.ts`) unwrap recursively, covering `memo(forwardRef(...))`. Hook Inspector, Context Inspector, and Render Tracking needed **no changes** — they already operate on Fiber-instance-level state (`memoizedState`/`dependencies`) that exists regardless of what shape `fiber.type` is.
+
+See `DECISIONS.md`, 2026-08-25, for two real bugs found only via test execution (a React `SimpleMemoComponent` fiber-shape optimization, and an unnamed-arrow-function stack-frame parsing gap).
 
 ---
 
@@ -281,6 +293,7 @@ This package has no knowledge of React Fiber, dispatchers, or any React-internal
 - Registration/unregistration calls triggered from React effects must be serialized (not fired independently), to remain correct under React StrictMode's development-mode double-invoke.
 - Runtime observation stays zero-instrumentation and always-on for every capability except one, deliberate, explicitly-scoped exception: on-demand hook name resolution (`Insight.inspectHookNames()`), which must never be called automatically.
 - Presentation/orchestration logic built on top of `Insight` data belongs in a dedicated consumer package (`@react-insight/inspector`), not inside `@react-insight/react` itself.
+- A new dependency is preferred only when the underlying technique is itself unstable/version-sensitive enough to need active maintenance (e.g. dispatcher internals, why a hand-rolled approach was chosen over `react-debug-tools`); a small number of long-stable constants (e.g. `Symbol.for("react.memo")`) are defined locally instead of pulling in a package for them.
 
 ---
 
@@ -362,9 +375,10 @@ Current coverage includes:
 - Provider lifecycle integration
 - Mount / Unmount synchronization
 - Public API encapsulation
-- Component Discovery pipeline (Fiber Adapter, Traversal, Mapper, Hook Adapter, Hook Inspector, Context Inspector, including Fiber `current`/`alternate` identity resolution for stable ids, `memoizedProps`/`memoizedState` comparison for `rendered` detection, structural hook-shape classification with shallow value preview for `state`/`ref`/`memo-like`-kind hooks, and context-dependency-list walking with shallow value preview and displayName-based naming)
+- Component Discovery pipeline (Fiber Adapter, Traversal, Mapper, Hook Adapter, Hook Inspector, Context Inspector, including Fiber `current`/`alternate` identity resolution for stable ids, `memoizedProps`/`memoizedState` comparison for `rendered` detection, structural hook-shape classification with shallow value preview for `state`/`ref`/`memo-like`-kind hooks, context-dependency-list walking with shallow value preview and displayName-based naming, and — since 2026-08-25 — `memo`/`forwardRef`/`memo(forwardRef(...))` discovery and display-name resolution)
 - Fiber Handle Registry (set/get/delete/overwrite)
-- Hook Name Inspector — tested against **real** React rendering via `@testing-library/react` (not plain fixtures, since a hand-built fixture cannot faithfully stand in for React's real dispatcher): `useState`/`useReducer` and `useMemo`/`useCallback` disambiguation, custom hook name resolution, no real hook-state mutation, console suppression during re-invocation, graceful failure handling, class-component exclusion
+- Dispatcher Access — all four branches (React 19's `.H` shape, the pre-19 `ReactCurrentDispatcher` fallback, preference for the React 19 shape when both are present, `undefined` when neither is present), using `vi.doMock("react", ...)` + dynamic `import()` per test
+- Hook Name Inspector — tested against **real** React rendering via `@testing-library/react` (not plain fixtures, since a hand-built fixture cannot faithfully stand in for React's real dispatcher): `useState`/`useReducer` and `useMemo`/`useCallback` disambiguation, custom hook name resolution, no real hook-state mutation, console suppression during re-invocation, graceful failure handling, class-component exclusion, and (2026-08-25) correct re-invocation through `memo`/`forwardRef`/`memo(forwardRef(...))` wrappers
 
 ### @react-insight/inspector Tests
 
@@ -374,7 +388,7 @@ Current coverage includes:
 
 ### End-to-End Validation (Playground)
 
-Beyond unit tests, Playground renders a real React tree through `InsightProvider` and is the only environment that exercises the real `react-dom` DevTools hook connection path (`hook.inject(...)`, module-load timing, actual commit notifications) rather than a directly-invoked test double. This caught several bugs invisible to fixture-based unit tests alone — see `DECISIONS.md`, 2026-07-21 — and remains the required check before considering discovery/render-tracking/hook-tracking/context-tracking/on-demand-hook-name-resolution changes complete. For the last of these specifically, Playground validation carries extra weight beyond the usual: even `@testing-library/react`'s jsdom environment cannot fully guarantee real-browser dispatcher behavior. See `DECISIONS.md`, 2026-08-24.
+Beyond unit tests, Playground renders a real React tree through `InsightProvider` and is the only environment that exercises the real `react-dom` DevTools hook connection path (`hook.inject(...)`, module-load timing, actual commit notifications) rather than a directly-invoked test double. This caught several bugs invisible to fixture-based unit tests alone — see `DECISIONS.md`, 2026-07-21 — and remains the required check before considering discovery/render-tracking/hook-tracking/context-tracking/on-demand-hook-name-resolution changes complete. For on-demand hook name resolution specifically, Playground validation carries extra weight beyond the usual: even `@testing-library/react`'s jsdom environment cannot fully guarantee real-browser dispatcher behavior. See `DECISIONS.md`, 2026-08-24. The `memo`/`forwardRef` discovery fix (2026-08-25) is a second confirmed example of this: two real bugs in that change were found only through actual test/Playground execution, not predicted by the design.
 
 ---
 
@@ -435,16 +449,16 @@ Current internal infrastructure includes:
 - Component model (including render tracking, structural hook tracking with value previews across `state`/`ref`/`memo-like` kinds, context-dependency tracking with value preview, and unmount history)
 - ComponentRegistry
 - Root Lifecycle hook and Plugin (effect-based)
-- Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector) and Plugin (registered eagerly from `createInsight()`, not effect-based)
-- On-demand hook name resolution (Fiber Handle Registry, Dispatcher Access, Hook Name Inspector) — reachable only through `Insight.inspectHookNames()`, never part of the always-on pipeline
+- Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector) and Plugin (registered eagerly from `createInsight()`, not effect-based) — recognizes `memo`/`forwardRef`-wrapped components since 2026-08-25
+- On-demand hook name resolution (Fiber Handle Registry, Dispatcher Access, Hook Name Inspector) — reachable only through `Insight.inspectHookNames()`, never part of the always-on pipeline; also supports `memo`/`forwardRef` since 2026-08-25
 
 ### inspector
 
-Added 2026-08-24. Presentation/orchestration layer on top of `@react-insight/react`'s public `Insight` API — `inspectComponent(insight, id)`. No knowledge of React Fiber or any React-internal concept. First workspace package to depend on another React Insight package.
+Added 2026-08-24. Presentation/orchestration layer on top of `@react-insight/react`'s public `Insight` API — `inspectComponent(insight, id)`. No knowledge of React Fiber or any React-internal concept. First workspace package to depend on another React Insight package. Gained its first real UI consumer 2026-08-25 (Playground's "Inspect" button).
 
 ### playground
 
-Integration application used to validate package exports, Runtime behavior and Developer Experience before publishing — and, since it now renders a real React tree through `@react-insight/react`, the only environment that validates Component Discovery, Render Tracking, Hook Tracking, Context Tracking, and on-demand hook name resolution against actual `react-dom` behavior rather than synthetic Fiber fixtures.
+Integration application used to validate package exports, Runtime behavior and Developer Experience before publishing — and, since it now renders a real React tree through `@react-insight/react`, the only environment that validates Component Discovery, Render Tracking, Hook Tracking, Context Tracking, and on-demand hook name resolution against actual `react-dom` behavior rather than synthetic Fiber fixtures. `InsightDebugPanel` also includes a real "Inspect" button per component (2026-08-25), the first UI consumer of `@react-insight/inspector`.
 
 ---
 

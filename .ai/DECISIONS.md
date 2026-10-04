@@ -1939,3 +1939,162 @@ and the first to depend on another React Insight package
 Demonstrates the architecture described in `ARCHITECTURE.md`'s "Future
 Packages" section (`@react-insight/inspector` was explicitly named
 there) is workable as designed, not merely aspirational.
+
+
+## 2026-08-25
+
+### Added a real "Inspect" UI in Playground — first UI consumer for @react-insight/inspector
+
+Each row in `InsightDebugPanel` now has an "Inspect" button that calls
+`inspectComponent(insight, id)` (from `@react-insight/inspector`) and
+displays the result — structural snapshot plus on-demand `hookNames`
+— in a panel below the list.
+
+Validated against real components, including the library's own
+internals: `Counter` correctly resolved `[{ hookName: "useState" }]`;
+`InsightProvider` correctly resolved both its `useRef` and `useEffect`
+hooks with `customHookName: "useRootLifecycle"` — confirming custom
+hook name resolution works against real, non-trivial library code, not
+just a synthetic test component.
+
+**Re-evaluated whether a `useComponentInspection()` React hook wrapper
+is now justified**, now that a real UI consumer exists (the condition
+Session prior work deferred this on). Decided no: the actual
+integration turned out to be a simple imperative call on click
+(`inspectComponent(insight, id)` inside an `onClick` handler), with no
+reactive/effect-driven behavior needed. A hook wrapper would only earn
+its place once some consumer needs the result to stay live (e.g.
+auto-re-inspecting on `onChange()`), which nothing does yet. Deferred
+again, per Principle 5, until that need materializes.
+
+Reason:
+
+Closes the "give @react-insight/inspector its first real UI consumer"
+item from `ROADMAP.md`'s Current Priorities, and answers the open
+hook-wrapper question with evidence instead of speculation.
+
+---
+
+## 2026-08-25
+
+### Fixed: memo()/forwardRef()-wrapped components were entirely invisible to Component Discovery
+
+`isComponentFiber()` — the gate the entire discovery pipeline (Render
+Tracking, structural Hook Tracking, Context Tracking, and on-demand
+hook name resolution) depends on — only recognized
+`typeof fiber.type === "function"`. `React.memo(...)` and
+`React.forwardRef(...)` both wrap the real component in an object
+(`{ $$typeof: Symbol.for('react.memo'), type, ... }` /
+`{ $$typeof: Symbol.for('react.forward_ref'), render, ... }`), so
+`fiber.type` is an object for these, not a function. This was not a
+narrow gap in one feature — these components were completely absent
+from `getComponents()`, never assigned an id, never tracked at all.
+
+**Scope was initially underestimated.** The candidate was first
+framed (in `ROADMAP.md`/`PROJECT_CONTEXT.md`) as "extend
+`inspectHookNames()` to memo/forwardRef" — an on-demand-only change.
+Inspecting `traversal.ts` before starting found the real gap sits in
+the always-on `isComponentFiber()` itself; extending only the
+on-demand layer would have had no effect, since `fiberHandleRegistry`
+is only ever populated for fibers Traversal already recognizes as
+components. Corrected the plan to a proper design-first pass (matching
+the same process used for `inspectHookNames()` itself) before writing
+code.
+
+**Design chosen:** recognize `memo`/`forwardRef` via
+`Symbol.for("react.memo")` / `Symbol.for("react.forward_ref")` —
+global symbols React itself registers, obtainable by any code via
+`Symbol.for` with the same key, without importing React internals or
+adding the `react-is` package as a dependency. Defined locally in
+`fiberAdapter.ts` (the only module allowed to know raw Fiber/type
+shape) rather than as a new dependency, since — unlike the
+`react-debug-tools`/dispatcher-internals cases — these two specific
+symbols have been stable since `memo`/`forwardRef` were introduced.
+
+`isComponentFiber()` and `getDisplayName()` (`traversal.ts`) both gained
+recursive unwrapping (covering `memo(forwardRef(...))`).
+`hookNameInspector.ts` gained matching `resolveInvocable()` /
+`resolveInvocableName()` helpers so on-demand hook name resolution
+correctly re-invokes a `forwardRef`'s `render(props, ref)` (`FiberNode`
+gained an optional `ref` field for this) or unwraps into a `memo`'s
+inner type. Hook Inspector, Context Inspector, and Render Tracking's
+`resolveFiberIdentity()` needed **no changes at all** — they operate on
+`fiber.memoizedState`/`fiber.dependencies`, which exist at the Fiber-
+instance level regardless of what shape `fiber.type` is.
+
+**Two real bugs found only via actual test execution, not predicted in
+the design:**
+
+1. React's `SimpleMemoComponent` optimization: for a `memo(fn)` with no
+   custom `compare`, React sets `fiber.type` directly to the *inner*
+   function, not the memo wrapper object — `fiber.type` is already
+   unwrapped in this common case. This wasn't a bug in the production
+   code (the existing plain-function path already handles it
+   correctly); it broke only a test helper that searched for the
+   wrapper reference by strict equality. Fixed by having the test
+   helper also accept a match against the wrapper's own `.type` field.
+2. `resolveCustomHookName()`'s stack-frame parser assumed every frame
+   has the form `"at functionName (...)"`. An inline, unnamed arrow
+   function passed directly to `forwardRef(...)` produces a V8 frame
+   with no name and no parentheses (`"at file:line:col"`), which the
+   old regex misparsed — the raw `"file:line:col"` string was returned
+   as if it were a real function name, surfacing as a nonsensical
+   `customHookName`. Fixed by requiring the `"name ("` form explicitly;
+   a frame that doesn't match now correctly yields `undefined`, which
+   the existing skip-loop and `undefined`-handling already accounted
+   for once threaded through consistently (the frame array keeps its
+   original length/positions rather than filtering unnamed frames out,
+   so later frame indices don't shift).
+
+**Validated end-to-end in Playground**, per the project's standing rule
+for any Component Discovery change: a temporary `memo` component and a
+temporary `forwardRef` component both appeared in `getComponents()` for
+the first time, with correct `displayName`, `renderCount`/`status`
+tracking identical to plain function components, correct structural
+`hooks`, and correct `inspectHookNames()` results (including through
+`memo(forwardRef(...))`).
+
+Reason:
+
+This is the same category of finding as the render-tracking
+overcounting saga (2026-07-26) and the `onChange()` feedback loop
+(2026-08-04/08-23): a fix that looks narrow on paper turned out to sit
+in a much more foundational layer than assumed, and two of its edge
+cases were only found by running real code against real React, not by
+reasoning in advance.
+
+---
+
+## 2026-08-25
+
+### Added dedicated test coverage for dispatcherAccess.ts
+
+`dispatcherAccess.ts` (added 2026-08-24 as part of on-demand hook name
+resolution) had no dedicated test file — it was only exercised
+indirectly through `hookNameInspector.test.tsx`'s success path (real
+React 19 internals present), leaving the pre-19 fallback branch and
+the "neither shape available" (production-build) branch completely
+untested.
+
+Added `dispatcherAccess.test.ts`, using `vi.doMock("react", ...)` +
+dynamic `import()` per test to swap the `react` module's internals
+shape, since the statically-imported namespace object can't be mutated
+directly in a test. Covers: the React 19 `.H` shape, the pre-19
+`ReactCurrentDispatcher` fallback, preference for the React 19 shape
+when both are present, and `undefined` when neither is present.
+
+**Real Vitest behavior found via actual test execution:** a mock
+factory that returns an object omitting a key `dispatcherAccess.ts`
+reads throws `"No ... export is defined on the ... mock"` — Vitest
+treats an omitted key as "not mocked" (an error to access) rather than
+"mocked as `undefined`". Every mock factory must explicitly return
+every key the module under test reads, including as `undefined`, not
+just the keys relevant to that specific test case.
+
+Reason:
+
+Pure test-coverage work — no production behavior changed. Closes a
+coverage gap on the one on-demand-resolution module that had none,
+consistent with the project's standing expectation that every module
+in the discovery pipeline (structural or on-demand) has dedicated unit
+tests.

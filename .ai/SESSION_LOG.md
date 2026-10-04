@@ -1817,3 +1817,106 @@ Next session:
   justified), `memo`/`forwardRef` support for `inspectHookNames()`, or
   begin design work for Timeline / a real DevTools panel (neither has
   a concrete design yet).
+
+  
+---
+
+## Session 25
+
+Completed:
+
+### Real "Inspect" UI in Playground
+
+- Each row in `InsightDebugPanel` gained an "Inspect" button, calling
+  `inspectComponent(insight, id)` from `@react-insight/inspector` and
+  displaying the result (structural snapshot + on-demand `hookNames`)
+  below the list — the first real UI consumer of `@react-insight/inspector`.
+- Verified against real components, including the library's own
+  internals: `Counter` correctly resolved `useState`; `InsightProvider`
+  correctly resolved both its `useRef` and `useEffect` hooks with
+  `customHookName: "useRootLifecycle"`.
+- **Re-evaluated the `useComponentInspection()` hook-wrapper question**
+  now that a real UI consumer exists. Decided no: the actual
+  integration was a simple imperative call inside an `onClick` handler,
+  with no reactive/effect-driven behavior needed. Deferred again, now
+  backed by evidence rather than speculation.
+
+### Fixed: memo()/forwardRef()-wrapped components were entirely invisible to Component Discovery
+
+- `isComponentFiber()` only recognized `typeof fiber.type === "function"`.
+  `memo(...)`/`forwardRef(...)` wrap the component in an object, so
+  these components were invisible not just to on-demand hook name
+  resolution but to the *entire* pipeline — never discovered, never
+  tracked by Render/Hook/Context Tracking.
+- **Scope was initially underestimated**: first framed as "extend
+  `inspectHookNames()` only" (an on-demand-only change) until
+  inspecting `traversal.ts` revealed the real, always-on-pipeline gap.
+  Corrected to a proper design-first pass before writing code.
+- Fix: recognize `memo`/`forwardRef` via `Symbol.for("react.memo")` /
+  `Symbol.for("react.forward_ref")` — stable global symbols defined
+  locally in `fiberAdapter.ts` rather than via a new `react-is`
+  dependency. `isComponentFiber()`/`getDisplayName()` (`traversal.ts`)
+  and `resolveInvocable()`/`resolveInvocableName()` (`hookNameInspector.ts`)
+  both unwrap recursively (covering `memo(forwardRef(...))`). Hook
+  Inspector, Context Inspector, and Render Tracking needed **no
+  changes** — they operate on Fiber-instance-level state independent
+  of `fiber.type`'s shape.
+- **Two real bugs found only via test execution:** React's
+  `SimpleMemoComponent` optimization already unwraps `fiber.type` for
+  a plain `memo(fn)` with no custom `compare` (fixed a test helper, not
+  production code); and an inline unnamed arrow function passed
+  directly to `forwardRef(...)` produces a nameless, parenthesis-less
+  V8 stack frame (`"at file:line:col"`), which `resolveCustomHookName()`
+  previously misparsed as a real function name.
+- Validated end-to-end in Playground: temporary `memo`/`forwardRef`
+  components appeared in `getComponents()` for the first time, with
+  correct `displayName`, `renderCount`/`status`, structural `hooks`,
+  and `inspectHookNames()` results.
+
+### dispatcherAccess.ts Test Coverage
+
+- Added `dispatcherAccess.test.ts`, closing a gap where this module
+  (added Session 24) was only exercised indirectly through
+  `hookNameInspector.test.tsx`'s success path. Covers all four
+  branches (React 19's `.H` shape, the pre-19 fallback, preference for
+  the React 19 shape when both are present, `undefined` when neither
+  is) via `vi.doMock("react", ...)` + dynamic `import()` per test.
+- Real Vitest behavior found via execution: a mock factory omitting a
+  key the module reads throws rather than treating it as `undefined`
+  — every mock factory must explicitly return every key read.
+
+### Validation
+
+Full Quality Gate verified and passed after each change, applied
+incrementally. `hookNameInspector.test.tsx` extended with dedicated
+`memo`/`forwardRef`/`memo(forwardRef(...))` cases. Manual Playground
+validation performed for the Inspect UI, the `memo`/`forwardRef` fix,
+and (implicitly, via existing coverage) `dispatcherAccess.ts`.
+
+### Documentation
+
+Updated: `DECISIONS.md` (three new entries), `PROJECT_CONTEXT.md`,
+`REACT_ARCHITECTURE.md`, `REACT_RUNTIME_ARCHITECTURE.md` (new "What
+Counts as a Component Fiber" subsection in Section 6, updated Hook
+Name Inspector contract, Dispatcher Access test-coverage note),
+`ROADMAP.md` (Phase 3 status updated, `memo`/`forwardRef` moved from
+Longer-Term Goals to Completed), and `ARCHITECTURE.md`.
+
+Current status:
+
+- Phase 3 (Inspector) now has a real UI consumer for
+  `@react-insight/inspector`, and Component Discovery correctly
+  recognizes every component shape React actually produces (plain
+  function, class, `memo`, `forwardRef`, and combinations) — not just
+  the subset it happened to support before this session.
+- The `useComponentInspection()` hook-wrapper question is closed for
+  now, with evidence rather than speculation behind the decision.
+- All `.ai` documentation is synchronized with the implementation as
+  of this session.
+
+Next session:
+
+- Choose the next Phase 3 slice: begin design work for Timeline or a
+  real DevTools panel (neither has a concrete design yet), or a full
+  nested custom-hook tree for `inspectHookNames()` (no current
+  consumer, lower priority).

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, memo, forwardRef } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useInsight } from "@react-insight/react";
 import { inspectComponent } from "@react-insight/inspector";
 import type { ComponentInspection } from "@react-insight/inspector";
@@ -137,6 +137,9 @@ export function App() {
         {showGreeting ? "Unmount" : "Mount"} Greeting
       </button>
       {showGreeting && <Greeting />}
+      <ThemeContext.Provider value="dark">
+        <ContextProbe />
+      </ThemeContext.Provider>
       <InsightDebugPanel />
     </div>
   );
