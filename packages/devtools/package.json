@@ -1,0 +1,61 @@
+{
+  "name": "@react-insight/devtools",
+  "version": "0.1.0",
+  "description": "Drop-in DevTools panel for React Insight: component tree, render flashes, hook and context details.",
+  "keywords": [
+    "react",
+    "react-insight",
+    "devtools",
+    "debugging",
+    "typescript"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/afraz-saeed1986/react-insight.git"
+  },
+  "homepage": "https://github.com/afraz-saeed1986/react-insight",
+  "bugs": {
+    "url": "https://github.com/afraz-saeed1986/react-insight/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@react-insight/react": "workspace:*",
+    "react": ">=19"
+  },
+  "dependencies": {
+    "@react-insight/inspector": "workspace:*"
+  },
+  "devDependencies": {
+    "@react-insight/eslint-config": "workspace:*",
+    "@react-insight/react": "workspace:*",
+    "@types/react": "^19.1.0",
+    "eslint": "^10.6.0",
+    "react": "^19.1.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  }
+}
