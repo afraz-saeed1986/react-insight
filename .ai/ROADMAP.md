@@ -15,7 +15,7 @@ Framework-agnostic plugin runtime: `Runtime`, `PluginManager`, plugin lifecycle 
 React lifecycle integration, Component Discovery (mount / update / unmount, including `memo` / `forwardRef`), accurate Render Tracking, structural Hook Tracking with value previews, structural Context Tracking, public read API (`getComponents()` / `getComponent()`), reactive `onChange()`. All validated end-to-end against a real React app in Playground.
 
 ### Phase 3 — Inspector / DevTools — **Active**
-Delivered: on-demand `Insight.inspectHookNames()`; `@react-insight/inspector`; `memo` / `forwardRef` across the whole pipeline; and (2026-10-04) a DevTools panel built inside Playground on the public API only: component tree, detail pane, render flash, name filter, minimum-renders filter, hook/context summary. Not started: Timeline, extraction of the panel into its own package, Session management.
+Delivered: on-demand `Insight.inspectHookNames()`; `@react-insight/inspector`; `memo` / `forwardRef` across the whole pipeline; and (2026-10-04) a DevTools panel on the public API only (component tree, detail pane, render flash, name filter, minimum-renders filter, hook/context summary), extracted the same day into the fifth package `@react-insight/devtools`. Not started: Timeline, Session management, npm release.
 
 ---
 
@@ -29,20 +29,20 @@ Delivered: on-demand `Insight.inspectHookNames()`; `@react-insight/inspector`; `
 - `Insight.getComponents()`, `getComponent(id)`, `onChange()` (batched by microtask, gated by a structural dirty-check).
 - `Insight.inspectHookNames(id)` (on-demand, one level of custom hook name, plain function / `memo` / `forwardRef` / `memo(forwardRef)`; not class components).
 - `@react-insight/inspector` — `inspectComponent(insight, id)`.
-- **Playground as a gated package** (2026-10-04): `lint` / `typecheck` / `test` scripts, Vitest, 34 unit tests over the panel's pure functions.
-- **DevTools panel in Playground** (2026-10-04): `buildComponentTree`, `excludeSubtrees` (self-observation guard), `mergeHookInfo`, `filterComponentTree`, `filterByMinRenders`, `summarizeComponent`, tree / detail components, render flash.
+- **Playground as a gated package** (2026-10-04): `lint` / `typecheck` scripts (its unit tests moved with the panel code).
+- **`@react-insight/devtools`** (2026-10-04): `DevtoolsPanel` (only public export): `buildComponentTree`, `excludeSubtrees` (self-observation guard, root matched by explicit `displayName`), `mergeHookInfo`, `filterComponentTree`, `filterByMinRenders`, `summarizeComponent`, tree / detail components, render flash; 34 unit tests; `react` and `@react-insight/react` as peerDependencies. Playground consumes it like an external app.
 - Housekeeping: orphaned `EventBus` system, archive folder, empty stub files and dead Playground files removed; `InsightContext.displayName` set; `ComponentSnapshot` exported.
 
 ---
 
 ## Current priorities (Phase 3, none started)
 
-Candidates, each needing a short design approved before code:
+Candidates, each needing a short design approved before code (npm publishing readiness below needs no pipeline change):
 
-1. **Extract the panel to `@react-insight/devtools`** — the UI is now stable and tested; decide package boundary, React peer dependency, and public API (depends only on `@react-insight/react` and `@react-insight/inspector` public APIs). Replaces the name-based self-exclusion with an explicit opt-out if that is cheap.
-2. **Timeline** — needs a per-event history structure in `ComponentRegistry` (today only latest state is kept); an always-on hot-path change, so design first (ring buffer / memory cap / event schema / public API).
-3. **Correct sibling order** — the tree orders siblings by registry insertion order, not React child order (visible after a re-mount). Needs a sibling index in the always-on pipeline.
-4. Panel polish with no pipeline change, if wanted: expand/collapse, keyboard navigation, copy snapshot as JSON.
+1. **Timeline** — needs a per-event history structure in `ComponentRegistry` (today only latest state is kept); an always-on hot-path change, so design first (ring buffer / memory cap / event schema / public API).
+2. **Correct sibling order** — the tree orders siblings by registry insertion order, not React child order (visible after a re-mount). Needs a sibling index in the always-on pipeline.
+3. Panel polish with no pipeline change, if wanted: expand/collapse, keyboard navigation, copy snapshot as JSON.
+4. **npm publishing readiness** — per-package README, versioning/changelog flow, `files` / `exports` check, `publint` or equivalent; no code-path changes.
 
 ---
 
@@ -56,16 +56,15 @@ Candidates, each needing a short design approved before code:
 ## Known gaps
 
 - Tree sibling order follows registry insertion order (above).
-- The panel excludes itself by component name (`"DevtoolsPanel"`).
 - `inspectHookNames()` custom hook names degrade under minified builds; hooks are never available in production React builds.
 - Hook summary counts structural hooks only; `useContext` is reported under contexts, never under hooks (by design — it takes no hook slot).
 
 ## Longer-term goals
 
-Publishable DevTools package, Timeline, Session management, npm release of all packages.
+Publishing `@react-insight/devtools`, Timeline, Session management, npm release of all packages.
 
 ---
 
 ## Quality bar
 
-Every item clears `pnpm lint && pnpm typecheck && pnpm build && pnpm test` (now including Playground). Any change touching Component Discovery, Render / Hook / Context Tracking or on-demand hook name resolution also requires manual end-to-end validation in Playground. Several real bugs were found only that way, never by fixture tests (see `DECISIONS.md`).
+Every item clears `pnpm lint && pnpm typecheck && pnpm build && pnpm test` (all five packages; Playground has no unit tests). Any change touching Component Discovery, Render / Hook / Context Tracking or on-demand hook name resolution also requires manual end-to-end validation in Playground. Several real bugs were found only that way, never by fixture tests (see `DECISIONS.md`).

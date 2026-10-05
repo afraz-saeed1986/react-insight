@@ -49,7 +49,7 @@ importers:
   packages/devtools:
     dependencies:
       '@react-insight/inspector':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../inspector
     devDependencies:
       '@react-insight/eslint-config':
@@ -86,7 +86,7 @@ importers:
   packages/inspector:
     dependencies:
       '@react-insight/react':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../react
     devDependencies:
       '@react-insight/eslint-config':
@@ -151,7 +151,7 @@ importers:
   packages/react:
     dependencies:
       '@react-insight/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
     devDependencies:
       '@react-insight/eslint-config':

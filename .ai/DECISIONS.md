@@ -129,7 +129,7 @@ Exports `inspectComponent(insight, id)` = `getComponent()` + `inspectHookNames()
 ## 2026-10-04 — DevTools panel before Timeline, built inside Playground first
 
 **Context.** Phase 3 had two candidates with no design: Timeline and a real DevTools panel.
-**Decision.** Build the DevTools panel first, inside Playground (`packages/playground/src/devtools/`), using only the public API (`getComponents()`, `onChange()`, `inspectComponent()`). No new package yet; extraction to `@react-insight/devtools` is a later, separate decision once the UI shape is stable.
+**Decision.** Build the DevTools panel first, inside Playground (`packages/playground/src/devtools/`), using only the public API (`getComponents()`, `onChange()`, `inspectComponent()`). No new package yet; extraction to `@react-insight/devtools` was a later, separate decision (made the same day, see below).
 **Why.** It touches no always-on pipeline code. Timeline would need a per-event history in `ComponentRegistry` (today it keeps only latest state: `renderCount`, `lastRenderedAt`), i.e. a new always-on structure on the hot path (ring buffer, memory cap, event schema, public API) with an unknown consumer. A real panel shows which data Timeline actually needs.
 **Trade-off.** The panel is not publishable until extracted. `@react-insight/inspector` stays React-free, so UI never goes there.
 
@@ -143,8 +143,18 @@ Exports `inspectComponent(insight, id)` = `getComponent()` + `inspectHookNames()
 
 **Context.** The 2026-08-23 fix excluded the panel's own record by `displayName`. The new panel renders child components (`ComponentTreeView`, `ComponentDetails`, ...), which Insight also tracks; their `renderCount` changes would re-trigger the panel and recreate the loop.
 **Decision.** `excludeSubtrees(snapshots, isExcludedRoot)` drops the panel and every descendant (resolved via the `parentId` chain, cycle-safe) before building the tree or comparing snapshots. Validated live: the panel and its children never appear, and idle shows zero activity.
-**Accepted hack.** The root is still matched by name (`PANEL_DISPLAY_NAME = "DevtoolsPanel"`, must equal the function name). The proper fix is an explicit opt-out in `createInsight()`, which changes the always-on pipeline and is deferred pending its own design.
+**Accepted hack (superseded later the same day, see the extraction entry below).** The root was matched by name (`PANEL_DISPLAY_NAME = "DevtoolsPanel"`, must equal the function name). The proper fix is an explicit opt-out in `createInsight()`, which changes the always-on pipeline and is deferred pending its own design.
 
 ## 2026-10-04 — Inspection stays explicit; panel features use snapshot data only
 
 Selecting a row, or pressing "Re-inspect", is the only thing that calls `inspectComponent()` (and therefore re-executes the component's render body). The panel's name filter, minimum-renders filter, hook/context summary and render-flash animation are all pure functions or CSS over `ComponentSnapshot` data, with no extra state-driven re-renders of tracked components. The flash uses `key={renderCount}` to replay a CSS animation; rapid renders inside the 150ms throttle collapse into one flash, and a remount (first paint, toggling "Show unmounted") flashes all rows once (accepted).
+
+## 2026-10-04 — DevTools panel extracted into `@react-insight/devtools` (fifth package)
+
+**Context.** The panel's UI shape was stable (tree, details, filters, flash, summary) and the helpers had 34 unit tests. It was only usable from Playground, so it could not be published or reused.
+**Decision.** New package `packages/devtools`. Public API is only `DevtoolsPanel` (no props); helpers stay internal. Done in two commits: (1) create the package with copied sources and tests while Playground stays unchanged; (2) switch Playground to the package, delete `packages/playground/src/devtools/`, and remove Playground's `test` script, `vitest` devDependency and `vitest.config.ts` (it keeps `lint` and `typecheck`; the test-in-Playground decision above is thereby reversed, because the tests moved with the code).
+**Why peerDependencies.** `react` and `@react-insight/react` are `peerDependencies` (also devDependencies for local work). A second copy of `@react-insight/react` would create a second `InsightContext`, and `useInsight()` in the panel would not see the host app's Insight. `@react-insight/inspector` is a normal dependency. Dependency direction: `devtools → inspector → react → core`.
+**Why an explicit `displayName`.** `DevtoolsPanel.displayName = "ReactInsightDevtools"` is used as the `excludeSubtrees` root predicate. Matching by function name would break once a consumer's bundler minifies the package. Resolution of an explicit `displayName` before the function name was verified in `resolveDisplayName`. This replaces the name-matching hack without touching `createInsight()` or the always-on pipeline.
+**Validated.** Gate and CI green at both steps; manual Playground validation passed (tree populated, so no duplicate context; panel and its children excluded; idle shows zero activity; flash, filters, hook and context details work).
+**Out of scope.** New features, `Insight` / registry / pipeline changes, npm publishing, sibling ordering.
+**Consequence.** Any CI step that lists packages explicitly must include `devtools`.

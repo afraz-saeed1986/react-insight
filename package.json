@@ -7,8 +7,7 @@
     "dev": "pnpm --filter @react-insight/playground dev",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
-    "clean": "pnpm -r clean"
+    "test": "pnpm -r test"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

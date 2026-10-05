@@ -32,6 +32,26 @@ after the condensed history.
 
 ---
 
+## Session 27 (2026-10-04) — `@react-insight/devtools` extracted
+
+**Goal.** Make the DevTools panel a separate, publishable package (design approved with defaults; see `DECISIONS.md`, 2026-10-04).
+
+**Delivered (two gated commits).**
+1. New package `packages/devtools`: tsup (esm + dts), metadata mirroring `inspector`, `index.ts` exporting only `DevtoolsPanel`; sources and the 34 tests copied; `react` + `@react-insight/react` as `peerDependencies`, `@react-insight/inspector` as dependency; `DevtoolsPanel.displayName = "ReactInsightDevtools"` used as the exclusion root predicate. Playground unchanged.
+2. Playground switched to `import { DevtoolsPanel } from "@react-insight/devtools"`; `packages/playground/src/devtools/`, its `test` script, `vitest` devDependency and `vitest.config.ts` removed (lint and typecheck kept).
+
+**Verification.** The developer reported the Quality Gate passing after each step (34 tests in `@react-insight/devtools`), CI green after each push, and manual Playground validation passing (tree populated, panel and children excluded, idle without activity, flash, filters, hook and context details).
+
+**Findings.** One Gate failure along the way: Playground still had `"test": "vitest run"` after its tests were removed, and vitest exits 1 with no test files; removing the script fixed it.
+
+**Known issues.** Sibling order follows registry insertion order, not React child order (needs a sibling index in the always-on pipeline: design first). Flash replays on first paint and when toggling "Show unmounted". Not yet published to npm.
+
+**Documentation.** `ARCHITECTURE.md`, `DECISIONS.md` and this file updated. `ROADMAP.md` pending; `PROJECT_CONTEXT.md`, `REACT_ARCHITECTURE.md` and `REACT_RUNTIME_ARCHITECTURE.md` unchanged.
+
+**Next recommended step.** Sibling-order design doc, or a Timeline design pass, or npm publishing readiness (versioning, README per package).
+
+---
+
 ## Session 26 (2026-10-03 → 2026-10-04) — DevTools panel in Playground
 
 **Goal.** Choose the next Phase 3 slice. Decision: a real DevTools panel built inside Playground on the public API only, before Timeline (see `DECISIONS.md`, 2026-10-04).
@@ -53,8 +73,8 @@ after the condensed history.
 - **Sibling order in the tree follows registry insertion order, not React child order** (a re-mounted `Greeting` listed after `ContextProbe` although it renders before it). Fixing it needs a sibling index in the always-on pipeline.
 - An editor-only "Could not find a declaration file for '@react-insight/react'" error appeared once (config is correct; `typecheck` passed in CI); treated as a stale/missing `dist` or TS-server cache, not reproduced.
 
-**Known issues / limitations.** Sibling order (above); panel exclusion matches the component by name (`"DevtoolsPanel"`); flash replays on first paint and when toggling "Show unmounted"; hook count in the summary excludes `useContext` by design.
+**Known issues / limitations.** Sibling order (above); panel exclusion matched by name (fixed in Session 27); flash replays on first paint and when toggling "Show unmounted"; hook count in the summary excludes `useContext` by design.
 
 **Documentation.** `.ai/` synchronized and condensed this session (DECISIONS, SESSION_LOG, ROADMAP, PROJECT_CONTEXT, ARCHITECTURE). `REACT_ARCHITECTURE.md` and `REACT_RUNTIME_ARCHITECTURE.md` were not touched: no React-package or runtime behavior changed this session.
 
-**Next recommended step.** Design (then approve) extracting the panel to `@react-insight/devtools`; or a Timeline design pass (needs a registry history structure); or sibling order (pipeline change, needs design).
+**Next recommended step.** Extraction to `@react-insight/devtools` (done in Session 27); then Timeline or sibling order (both need a design).

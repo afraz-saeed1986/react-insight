@@ -59,7 +59,7 @@ Public surface: the `Insight` facade with `use()`, `destroy()`, `getComponents()
 
 **Inspector package.** `@react-insight/inspector` exports `inspectComponent(insight, id)` and depends only on the public `Insight` API.
 
-**DevTools panel (Playground, 2026-10-04).** A React UI over the public API only (`getComponents()`, `onChange()`, `inspectComponent()`), living in `packages/playground/src/devtools/`. Pure helpers hold all logic (`buildComponentTree`, `excludeSubtrees`, `mergeHookInfo`, `filterComponentTree`, `filterByMinRenders`, `summarizeComponent`) and are unit-tested; components are thin. Because the panel sits inside the tree it observes, it excludes itself **and all its descendants** from what it reads. Inspection (which re-executes a render body) runs only on an explicit click. Planned extraction into `@react-insight/devtools` is undecided.
+**DevTools package (`@react-insight/devtools`, 2026-10-04).** A React UI over the public API only (`getComponents()`, `onChange()`, `inspectComponent()`). Public surface: `DevtoolsPanel` (no props); everything else is internal. Pure helpers hold all logic (`buildComponentTree`, `excludeSubtrees`, `mergeHookInfo`, `filterComponentTree`, `filterByMinRenders`, `summarizeComponent`) and are unit-tested; components are thin. Because the panel sits inside the tree it observes, it excludes itself **and all its descendants**; the root is matched by an explicit `DevtoolsPanel.displayName` (`"ReactInsightDevtools"`), so exclusion survives minification. `react` and `@react-insight/react` are `peerDependencies` (a second copy would create a second `InsightContext` and the panel would see nothing); `@react-insight/inspector` is a normal dependency. Inspection (which re-executes a render body) runs only on an explicit click.
 
 ---
 
@@ -74,7 +74,8 @@ Public surface: the `Insight` facade with `use()`, `destroy()`, `getComponents()
 - Nothing under `internal/` is exported from a package entry point, except `installReactDevtoolsHook()`.
 - Registration/unregistration triggered from React effects must be serialized.
 - Observation is zero-instrumentation and always-on, with one explicit, opt-in exception: `inspectHookNames()`.
-- Presentation and orchestration over `Insight` data belongs in consumer packages (`inspector`, the DevTools panel), not in `@react-insight/react`.
+- Presentation and orchestration over `Insight` data belongs in consumer packages (`inspector`, `devtools`), not in `@react-insight/react`.
+- A package that needs the same React context instance as the host app (`devtools`) declares `@react-insight/react` and `react` as `peerDependencies`.
 - A subscriber that lives inside the tree it observes must exclude itself and everything it renders.
 - Prefer a new dependency only when the technique is itself version-sensitive (e.g. dispatcher internals); small, long-stable constants (e.g. `Symbol.for("react.memo")`) are defined locally.
 
@@ -90,7 +91,8 @@ Every public API is tested. Static analysis (ESLint flat config, strict `tsc`) i
 - **Core:** Runtime, PluginManager, Logger Plugin; lifecycle, destruction, events, rollback, `PluginContext`.
 - **React:** `createInsight()` (all read APIs, eager discovery), `InsightProvider`, `useInsight()`, `useInsightLifecycle()` under StrictMode, `RootRegistry`, `ComponentRegistry` (sync, per-field dirty-check, `markUnmounted()`, render accounting, `subscribe()`), both plugins, and every discovery module (Fiber Adapter, Traversal incl. `current`/`alternate` identity and props/state-based `rendered`, Mapper, Hook Adapter, Hook Inspector, Context Inspector, value preview, `memo` / `forwardRef`). On-demand modules: Fiber Handle Registry, Dispatcher Access (all four branches via `vi.doMock("react", ...)`), and Hook Name Inspector tested against **real** React rendering (`@testing-library/react`), since fixtures cannot stand in for the real dispatcher.
 - **Inspector:** `inspectComponent()` against a fake `Insight`.
-- **Playground:** Vitest unit tests for the DevTools panel's pure helpers (34 tests at 2026-10-04). Component rendering is validated manually.
+- **Devtools:** Vitest (node env) unit tests for the panel's pure helpers (34 tests at 2026-10-04). Component rendering is validated manually in Playground.
+- **Playground:** no unit tests; lint and typecheck only.
 - **End-to-end (Playground, manual, mandatory):** Playground is the only environment exercising the real `react-dom` DevTools hook path (`inject()`, module-load timing, real commits). Required for any change touching Component Discovery, Render / Hook / Context Tracking or on-demand hook resolution; several real bugs were found only this way (see `DECISIONS.md`).
 
 **Coverage.** Vitest + V8, enforced for **Core only** in CI: thresholds statements 90 / lines 90 / functions 85 / branches 80; current ≈ 92 / 91 / 88 / 85. React, Inspector and Playground meet the same lint / typecheck / build / test bar without a coverage script.
@@ -104,15 +106,16 @@ packages
 ├── core          framework-agnostic Runtime
 ├── react         official React integration layer
 ├── inspector     inspectComponent() over the public Insight API
-├── playground    integration app + DevTools panel; imports packages like an external app
+├── devtools      DevtoolsPanel UI over the public Insight API (peer: react, @react-insight/react)
+├── playground    integration app; imports packages like an external app
 └── eslint-config shared flat config (private)
 ```
 
-Playground imports Core and React exactly as an external app would, including the module-order requirement that `installReactDevtoolsHook()` runs before `react-dom` is imported. No internal source imports are allowed.
+Dependency direction: `devtools` → `inspector` → `react` → `core`. Playground imports Core, React, Inspector and Devtools exactly as an external app would, including the module-order requirement that `installReactDevtoolsHook()` runs before `react-dom` is imported. No internal source imports are allowed.
 
 ## Built-in plugins
 Factory functions (`loggerPlugin()`): independent instances, no shared state, better test isolation, safe across multiple Runtimes.
 
 ## Quality Gate
 
-Every change passes `pnpm lint && pnpm typecheck && pnpm build && pnpm test` (all four packages including Playground), verified by GitHub Actions on every push and pull request (`.github/workflows/ci.yml`: lint, typecheck, build, test, core-only coverage, Node 22/24). Any CI step that lists packages explicitly must include Playground. Changes touching Component Discovery, Render / Hook / Context Tracking or on-demand hook resolution also require manual Playground validation. A change is complete only after all gates pass.
+Every change passes `pnpm lint && pnpm typecheck && pnpm build && pnpm test` (all packages; Playground has lint, typecheck and build only), verified by GitHub Actions on every push and pull request (`.github/workflows/ci.yml`: lint, typecheck, build, test, core-only coverage, Node 22/24). Any CI step that lists packages explicitly must include `devtools` and Playground. Changes touching Component Discovery, Render / Hook / Context Tracking or on-demand hook resolution also require manual Playground validation. A change is complete only after all gates pass.
