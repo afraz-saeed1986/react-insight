@@ -49,14 +49,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build
+        run: pnpm build
+
       - name: Lint
         run: pnpm lint
 
       - name: Type Check
         run: pnpm typecheck
 
-      - name: Build
-        run: pnpm build
-
       - name: Test
-        run: pnpm --filter @react-insight/core test --coverage
+        run: pnpm test
+
+      - name: Core coverage
+        run: pnpm --filter @react-insight/core test:coverage
