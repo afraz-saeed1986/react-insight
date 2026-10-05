@@ -5,63 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+Nothing has been published to npm yet. The first release will be `0.1.0` for
+every package; its date is set when it is published.
+
 ## [Unreleased]
 
 ### Added
 
-- Placeholder for upcoming changes.
+#### `@react-insight/core`
 
----
+- Generic, framework-agnostic `Runtime` with plugin lifecycle management: `registerPlugin()`, `unregisterPlugin()`, `destroy()`, `on()`, `emit()`
+- Atomic plugin registration (rollback if `setup()` throws), unique plugin names
+- Deterministic destruction (reverse registration order) and state protection after `destroy()`
+- `definePlugin()`, `InsightPlugin` and `PluginContext`
+- Built-in `loggerPlugin()` factory
 
-## [0.1.0] - 2026-07-12
+#### `@react-insight/react`
 
-### Added
+- `createInsight()`, `InsightProvider`, `useInsight()` and `installReactDevtoolsHook()`
+- Component discovery: mount, update and unmount, for function, class, `memo` and `forwardRef` components
+- Per-component render tracking: `renderCount`, `lastRenderedAt`
+- Structural hook tracking with bounded value previews, and context tracking
+- Public read API: `getComponents()`, `getComponent(id)`, `onChange()`
+- `Insight.inspectHookNames(id)`: on-demand exact hook names and one level of custom hook name
 
-#### Core
+#### `@react-insight/inspector`
 
-- Initial Runtime implementation
-- Generic Runtime architecture
-- Runtime destruction lifecycle (`destroy()`)
-- Runtime state protection after destruction
-- Plugin lifecycle management
-- Generic `PluginManager`
-- Generic `PluginContext`
-- Generic `InsightPlugin`
-- Generic `definePlugin()`
-- EventBus implementation
-- Subscription implementation
-- SubscriptionRegistry implementation
+- `inspectComponent(insight, id)`: combines a component snapshot with on-demand hook names
 
-#### Built-in Plugins
+#### `@react-insight/devtools`
 
-- Logger Plugin
-- Logger Plugin factory API
+- `DevtoolsPanel`: component tree, unmounted-component toggle, render flash, name filter, minimum-renders filter, per-row hook and context summary, detail pane with on-demand inspection
 
-#### Playground
+#### Tooling and quality
 
-- Playground package
-- Workspace integration
-- Public API validation
-- Initial integration demo
+- pnpm workspace, tsup builds (ESM and type declarations), TypeScript strict mode
+- Shared ESLint flat config for all packages
+- Vitest unit tests; coverage thresholds enforced for `core`
+- GitHub Actions CI: lint, typecheck, build, test, coverage (Node 22 and 24)
+- Playground app as the integration environment for the packages
 
-#### Quality
+### Changed
 
-- Runtime integration tests
-- EventBus unit tests
-- Subscription unit tests
-- SubscriptionRegistry unit tests
-- PluginManager unit tests
-- Logger Plugin integration tests
-- Shared ESLint Flat Config
-- TypeScript strict configuration
-- Coverage thresholds
-- GitHub Actions CI
-- Automated Quality Gate
-
-#### Documentation
-
-- Architecture documentation
-- Project roadmap
-- Architecture decisions
-- Project context
-- Session log
+- Inter-package dependencies use `workspace:^`, so published ranges are `^0.1.0`
+- Added `publishConfig.access: "public"`, a README and a LICENSE to each publishable package
