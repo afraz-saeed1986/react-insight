@@ -87,7 +87,30 @@ describe("PluginManager", () => {
 
     expect(manager.list()).toHaveLength(0);
 
-    expect(manager.get("logger")).toBeUndefined();
+       expect(manager.get("logger")).toBeUndefined();
     expect(manager.get("timeline")).toBeUndefined();
+  });
+
+  it("should report plugin presence and size", () => {
+    const manager = new PluginManager();
+
+    expect(manager.has("logger")).toBe(false);
+    expect(manager.size).toBe(0);
+
+    manager.register(
+      definePlugin({
+        name: "logger",
+
+        setup() {},
+      }),
+    );
+
+    expect(manager.has("logger")).toBe(true);
+    expect(manager.size).toBe(1);
+
+    manager.unregister("logger");
+
+    expect(manager.has("logger")).toBe(false);
+    expect(manager.size).toBe(0);
   });
 });

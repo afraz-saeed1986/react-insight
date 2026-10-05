@@ -199,11 +199,76 @@ describe("Runtime", () => {
       "Runtime has been destroyed.",
     );
   });
-  it("should ignore destroying runtime twice", async () => {
+    it("should ignore destroying runtime twice", async () => {
     const runtime = new Runtime();
 
     await runtime.destroy();
 
     await expect(runtime.destroy()).resolves.toBeUndefined();
+  });
+
+  it("should let plugins emit and listen to events through PluginContext", async () => {
+    const runtime = new Runtime();
+
+    const fromPluginListener = vi.fn();
+    const fromRuntimeListener = vi.fn();
+
+    runtime.on("plugin:removed", fromRuntimeListener);
+
+    await runtime.registerPlugin(
+      definePlugin({
+        name: "bridge",
+
+        setup(context) {
+          context.on("plugin:removed", fromPluginListener);
+
+          context.emit("plugin:removed", {
+            name: "from-plugin",
+          });
+        },
+      }),
+    );
+
+    expect(fromPluginListener).toHaveBeenCalledWith({ name: "from-plugin" });
+    expect(fromRuntimeListener).toHaveBeenCalledWith({ name: "from-plugin" });
+  });
+
+  it("should stop calling a PluginContext listener after it unsubscribes", async () => {
+    const runtime = new Runtime();
+
+    const listener = vi.fn();
+
+    await runtime.registerPlugin(
+      definePlugin({
+        name: "unsubscriber",
+
+        setup(context) {
+          const unsubscribe = context.on("plugin:removed", listener);
+
+          unsubscribe();
+        },
+      }),
+    );
+
+    runtime.emit("plugin:removed", { name: "after-unsubscribe" });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("should stop calling a Runtime listener after it unsubscribes", () => {
+    const runtime = new Runtime();
+
+    const listener = vi.fn();
+
+    const unsubscribe = runtime.on("plugin:removed", listener);
+
+    runtime.emit("plugin:removed", { name: "before" });
+
+    unsubscribe();
+
+    runtime.emit("plugin:removed", { name: "after" });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith({ name: "before" });
   });
 });
