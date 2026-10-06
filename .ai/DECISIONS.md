@@ -137,7 +137,7 @@ Exports `inspectComponent(insight, id)` = `getComponent()` + `inspectHookNames()
 
 **Decision.** `packages/playground` gets `lint`, `typecheck` and `test` scripts and `eslint` / `vitest` / `@react-insight/eslint-config` as devDependencies, mirroring `inspector`. `pnpm -r lint|typecheck|test` now covers it.
 **Why.** It previously had none, so any test written there would silently never run. Enabling lint immediately flagged real leftovers (unused React imports from temporary validation components; an unused `ContextProbe`). `ContextProbe` was re-rendered under `ThemeContext.Provider value="dark"` as a permanent Context Tracking fixture instead of being deleted.
-**Consequence.** Any CI step that lists packages explicitly (rather than `pnpm -r`) must include Playground.
+**Consequence.** Any CI step that lists packages explicitly (rather than `pnpm -r`) must include Playground. (Superseded in part: Playground's `test` script was later removed with the panel code; see the extraction entry.)
 
 ## 2026-10-04 — The panel excludes its whole subtree, not only itself
 
@@ -158,3 +158,17 @@ Selecting a row, or pressing "Re-inspect", is the only thing that calls `inspect
 **Validated.** Gate and CI green at both steps; manual Playground validation passed (tree populated, so no duplicate context; panel and its children excluded; idle shows zero activity; flash, filters, hook and context details work).
 **Out of scope.** New features, `Insight` / registry / pipeline changes, npm publishing, sibling ordering.
 **Consequence.** Any CI step that lists packages explicitly must include `devtools`.
+
+## 2026-10-05 — Publishing metadata: `workspace:^`, public access, per-package README and LICENSE
+
+**Context.** Nothing is published yet. `pnpm publish` rewrites `workspace:*` to the exact current version, which is too strict for the `devtools` peerDependency on `@react-insight/react` and brittle for dependencies. Scoped packages also fail their first publish without `publishConfig.access: "public"`.
+**Decision.** Inter-package dependencies among the four publishable packages (`core`, `react`, `inspector`, `devtools`) and the `devtools` peerDependency use `workspace:^` (published as `^0.1.0`). Each of those packages gets `publishConfig.access: "public"`, its own `README.md` and a copy of `LICENSE`. devDependencies keep `workspace:*`. All packages are versioned together by hand starting at `0.1.0`; Changesets is deferred until releases become regular. Pre-release (0.x) is stated in every README.
+**Trade-off.** For `0.x`, `^0.1.0` means `>=0.1.0 <0.2.0`, so every minor bump needs coordinated releases. Accepted for the pre-release phase.
+**Consequence.** Publishing is still blocked on tarball verification (`pnpm pack`, `publint`, `attw`).
+
+## 2026-10-05 — CI builds first and runs every package's tests
+
+**Context.** A `typecheck` failure surfaced that several earlier CI runs had been red and were misread as green. Logs showed: (1) `typecheck` ran before `build`, so on a fresh clone `@react-insight/react` could not resolve `@react-insight/core` through its not-yet-built `dist` (TS2307), hidden locally by leftover `dist` folders; (2) the Test step ran only `@react-insight/core`'s tests, so `react`, `inspector` and `devtools` tests never ran in CI; (3) when the Core coverage step finally ran it failed (statements and lines 87.3%, functions 80.76% against 90 / 90 / 85) because of an untested scratch file, `src/dev.ts`, and untested `PluginManager.has()`/`size` and `PluginContext` paths.
+**Decision.** `ci.yml` and the local Gate run `build`, `lint`, `typecheck`, then `pnpm test` for all packages, then Core coverage as a separate step. `src/dev.ts` was removed (nothing referenced it, tsup builds only `index.ts`) and four tests were added. The coverage thresholds were not lowered.
+**Why build first.** Workspace packages resolve each other through `exports` pointing at `dist`; relying on that without building is only safe where stale `dist` folders happen to exist.
+**Consequence.** Adding a package needs no edit to `ci.yml` (all steps use `pnpm -r`). A CI result is recorded as passing only after the run itself is checked, not from a general impression.

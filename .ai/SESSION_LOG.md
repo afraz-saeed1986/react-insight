@@ -32,6 +32,35 @@ after the condensed history.
 
 ---
 
+## Session 28 (2026-10-05) — npm publishing readiness and a hidden CI failure
+
+**Goal.** Make the four publishable packages (`core`, `react`, `inspector`, `devtools`) ready for npm. Scope owner confirmed: `@react-insight/core` returned 404 on npm, so the scope was free. Defaults: all packages versioned together by hand, starting at `0.1.0`, no Changesets yet.
+
+**Delivered (gated steps).**
+1. Package metadata: `publishConfig.access: "public"`, inter-package dependencies and the `devtools` peerDependency changed from `workspace:*` to `workspace:^` (publishes as `^0.1.0`, not an exact version); stray `packages/core/package-lock.json` and the unused root `clean` script removed.
+2. `README.md` and `LICENSE` added to each of the four packages.
+3. Root `README.md` rewritten (it still described only Phase 1) and `CHANGELOG.md` rewritten as one Unreleased section (it still listed removed internals such as `EventBus`).
+4. `ci.yml` fixed (below) and Core tests added (below).
+
+**Real finding: CI had been red or incomplete, and nobody noticed.** After step 3 the developer reported CI failing on `typecheck`, then realized that several earlier pushes had also been red and had been read as green. Causes found from the logs, not guessed:
+- `typecheck` ran before `build`, so on a fresh clone `@react-insight/react` could not resolve `@react-insight/core` (TS2307). Locally this was hidden by existing `dist` folders.
+- The Test step ran only `@react-insight/core`'s tests, so `react`, `inspector` and `devtools` tests never ran in CI.
+- Once the Core coverage step actually ran, it failed: statements/lines 87.3% and functions 80.76% against thresholds of 90/90/85. Causes: untested `src/dev.ts` scratch file (0%, removed after confirming nothing referenced it), untested `PluginManager.has()` and `size`, and untested `PluginContext.emit()`/`on()` and unsubscribe paths in `Runtime`. Fixed with four new tests, thresholds unchanged.
+
+**Fix.** `ci.yml` now runs build, lint, typecheck, `pnpm test` for all packages, then `test:coverage` for Core. Local Gate order is `pnpm build && pnpm lint && pnpm typecheck && pnpm test`.
+
+**Verification.** After the last push the developer reported local tests passing and CI green, stating explicitly that this time the run was checked.
+
+**Process lesson.** "CI passed" is only recorded after the run itself is looked at (`gh run list`), never from a general impression.
+
+**Known issues.** Sibling order follows registry insertion order (needs design). Flash replays on first paint and when toggling "Show unmounted". Core's current coverage numbers are not recorded in docs (CI reports them). Not yet published to npm.
+
+**Documentation.** `ARCHITECTURE.md` and `PROJECT_CONTEXT.md` updated for the Gate order, CI contents and publishing readiness; this file, `DECISIONS.md` and `ROADMAP.md` follow in the same sync.
+
+**Next recommended step.** Step 4 of publishing readiness: add `publint` and `@arethetypeswrong/cli`, run `pnpm pack` per package and inspect the tarballs (contents, resolved `workspace:^` ranges).
+
+---
+
 ## Session 27 (2026-10-04) — `@react-insight/devtools` extracted
 
 **Goal.** Make the DevTools panel a separate, publishable package (design approved with defaults; see `DECISIONS.md`, 2026-10-04).
@@ -46,9 +75,9 @@ after the condensed history.
 
 **Known issues.** Sibling order follows registry insertion order, not React child order (needs a sibling index in the always-on pipeline: design first). Flash replays on first paint and when toggling "Show unmounted". Not yet published to npm.
 
-**Documentation.** `ARCHITECTURE.md`, `DECISIONS.md` and this file updated. `ROADMAP.md` pending; `PROJECT_CONTEXT.md`, `REACT_ARCHITECTURE.md` and `REACT_RUNTIME_ARCHITECTURE.md` unchanged.
+**Documentation.** `ARCHITECTURE.md`, `DECISIONS.md`, `ROADMAP.md`, `PROJECT_CONTEXT.md` and this file updated. `REACT_ARCHITECTURE.md` and `REACT_RUNTIME_ARCHITECTURE.md` unchanged.
 
-**Next recommended step.** Sibling-order design doc, or a Timeline design pass, or npm publishing readiness (versioning, README per package).
+**Next recommended step.** Continue publishing readiness (Session 28); then sibling-order design or Timeline design.
 
 ---
 

@@ -95,7 +95,7 @@ Every public API is tested. Static analysis (ESLint flat config, strict `tsc`) i
 - **Playground:** no unit tests; lint and typecheck only.
 - **End-to-end (Playground, manual, mandatory):** Playground is the only environment exercising the real `react-dom` DevTools hook path (`inject()`, module-load timing, real commits). Required for any change touching Component Discovery, Render / Hook / Context Tracking or on-demand hook resolution; several real bugs were found only this way (see `DECISIONS.md`).
 
-**Coverage.** Vitest + V8, enforced for **Core only** in CI: thresholds statements 90 / lines 90 / functions 85 / branches 80; current ≈ 92 / 91 / 88 / 85. React, Inspector and Playground meet the same lint / typecheck / build / test bar without a coverage script.
+**Coverage.** Vitest + V8, enforced for **Core only** in CI (`test:coverage`): thresholds statements 90 / lines 90 / functions 85 / branches 80, set in `packages/core/vitest.config.ts`. Current values are whatever the CI run reports; none are recorded here. The check only started running in CI on 2026-10-05 and found Core below the thresholds (an untested scratch file and untested `PluginManager.has()` / `size` and `PluginContext` paths); fixed with tests, not by lowering thresholds. React, Inspector and Devtools meet the same lint / typecheck / build / test bar without a coverage script.
 
 ---
 
@@ -118,4 +118,12 @@ Factory functions (`loggerPlugin()`): independent instances, no shared state, be
 
 ## Quality Gate
 
-Every change passes `pnpm lint && pnpm typecheck && pnpm build && pnpm test` (all packages; Playground has lint, typecheck and build only), verified by GitHub Actions on every push and pull request (`.github/workflows/ci.yml`: lint, typecheck, build, test, core-only coverage, Node 22/24). Any CI step that lists packages explicitly must include `devtools` and Playground. Changes touching Component Discovery, Render / Hook / Context Tracking or on-demand hook resolution also require manual Playground validation. A change is complete only after all gates pass.
+Every change passes `pnpm build && pnpm lint && pnpm typecheck && pnpm test` (all packages; Playground has lint, typecheck and build only). **`build` comes first**: workspace packages resolve each other through `dist` (`exports` point at `./dist/index.d.ts`), so on a fresh clone `typecheck` fails with TS2307 unless dependencies are built first.
+
+GitHub Actions (`.github/workflows/ci.yml`, Node 22/24, `pnpm install --frozen-lockfile`) runs, in order: build, lint, typecheck, `pnpm test` (every package), then Core coverage (`pnpm --filter @react-insight/core test:coverage`). All steps use `pnpm -r`-style commands, so a new package is picked up without editing the workflow. Before 2026-10-05 the workflow ran typecheck before build and only Core's tests, and stayed red/incomplete unnoticed; a CI result counts only if the run itself is checked (`gh run list`), not assumed.
+
+Changes touching Component Discovery, Render / Hook / Context Tracking or on-demand hook resolution also require manual Playground validation. A change is complete only after all gates pass, including CI.
+
+## Publishing readiness
+
+Publishable packages: `core`, `react`, `inspector`, `devtools` (version `0.1.0`, MIT, ESM only, `files: ["dist"]`, `publishConfig.access: "public"`). Each has its own `README.md` and `LICENSE`. Inter-package dependencies, and the `devtools` peerDependency on `@react-insight/react`, use `workspace:^`, which publishes as `^0.1.0` (an exact version would be too strict for peers). Nothing has been published to npm yet; tarball verification is the next step.

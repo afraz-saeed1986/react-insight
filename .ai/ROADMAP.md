@@ -21,7 +21,7 @@ Delivered: on-demand `Insight.inspectHookNames()`; `@react-insight/inspector`; `
 
 ## Completed (by capability)
 
-- Core runtime, plugin lifecycle, Logger Plugin, Quality Gate; real `.github/workflows/ci.yml` (lint, typecheck, build, test, core-only coverage, Node 22/24).
+- Core runtime, plugin lifecycle, Logger Plugin, Quality Gate; `.github/workflows/ci.yml` (build, lint, typecheck, test of every package, core-only coverage, Node 22/24). Fixed 2026-10-05: it previously ran typecheck before build and only Core's tests, and had been red unnoticed.
 - `@react-insight/react` public API: `createInsight()`, `InsightProvider`, `useInsight()`, `installReactDevtoolsHook()` (must run before `react-dom` loads).
 - Root lifecycle (effect-based, StrictMode-safe via serialized registration); Component Discovery registered eagerly in `createInsight()`.
 - Render Tracking: root `commitCount`; per-component `rendered` / `renderCount` / `lastRenderedAt` (no known accuracy gaps).
@@ -31,6 +31,7 @@ Delivered: on-demand `Insight.inspectHookNames()`; `@react-insight/inspector`; `
 - `@react-insight/inspector` — `inspectComponent(insight, id)`.
 - **Playground as a gated package** (2026-10-04): `lint` / `typecheck` scripts (its unit tests moved with the panel code).
 - **`@react-insight/devtools`** (2026-10-04): `DevtoolsPanel` (only public export): `buildComponentTree`, `excludeSubtrees` (self-observation guard, root matched by explicit `displayName`), `mergeHookInfo`, `filterComponentTree`, `filterByMinRenders`, `summarizeComponent`, tree / detail components, render flash; 34 unit tests; `react` and `@react-insight/react` as peerDependencies. Playground consumes it like an external app.
+- **Publishing readiness, steps 1-3** (2026-10-05): `publishConfig.access`, `workspace:^` ranges, per-package README and LICENSE, root README and CHANGELOG rewritten, Core tests added to meet coverage thresholds.
 - Housekeeping: orphaned `EventBus` system, archive folder, empty stub files and dead Playground files removed; `InsightContext.displayName` set; `ComponentSnapshot` exported.
 
 ---
@@ -42,7 +43,7 @@ Candidates, each needing a short design approved before code (npm publishing rea
 1. **Timeline** — needs a per-event history structure in `ComponentRegistry` (today only latest state is kept); an always-on hot-path change, so design first (ring buffer / memory cap / event schema / public API).
 2. **Correct sibling order** — the tree orders siblings by registry insertion order, not React child order (visible after a re-mount). Needs a sibling index in the always-on pipeline.
 3. Panel polish with no pipeline change, if wanted: expand/collapse, keyboard navigation, copy snapshot as JSON.
-4. **npm publishing readiness** — per-package README, versioning/changelog flow, `files` / `exports` check, `publint` or equivalent; no code-path changes.
+4. **npm publishing readiness, remaining** — step 4: add `publint` and `@arethetypeswrong/cli`, run `pnpm pack` per package and inspect the tarballs (contents, resolved `workspace:^` ranges). Then decide the first publish (all four packages at `0.1.0`, manual, no Changesets yet). No code-path changes. **Recommended next.**
 
 ---
 
@@ -67,4 +68,4 @@ Publishing `@react-insight/devtools`, Timeline, Session management, npm release 
 
 ## Quality bar
 
-Every item clears `pnpm lint && pnpm typecheck && pnpm build && pnpm test` (all five packages; Playground has no unit tests). Any change touching Component Discovery, Render / Hook / Context Tracking or on-demand hook name resolution also requires manual end-to-end validation in Playground. Several real bugs were found only that way, never by fixture tests (see `DECISIONS.md`).
+Every item clears `pnpm build && pnpm lint && pnpm typecheck && pnpm test` (`build` first; all five packages; Playground has no unit tests) and a checked, green CI run. Any change touching Component Discovery, Render / Hook / Context Tracking or on-demand hook name resolution also requires manual end-to-end validation in Playground. Several real bugs were found only that way, never by fixture tests (see `DECISIONS.md`).

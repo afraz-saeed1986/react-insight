@@ -13,7 +13,7 @@ Long-term goals: plugin-based architecture, high performance, excellent TypeScri
 **Phase 1 (Core)** and **Phase 2 (React integration)** are complete. **Phase 3 (Inspector / DevTools)** is active. Condensed 2026-10-04; rationale for every item is in `DECISIONS.md`, history in `SESSION_LOG.md`.
 
 ### Workspace (5 packages + shared config)
-`core`, `react`, `inspector`, `devtools`, `playground`, plus `eslint-config` (private). pnpm workspace, tsup builds, shared ESLint flat config, real GitHub Actions CI (lint, typecheck, build, test, core-only coverage; Node 22/24). Playground has its own `lint` / `typecheck` scripts and is part of the Quality Gate.
+`core`, `react`, `inspector`, `devtools`, `playground`, plus `eslint-config` (private). pnpm workspace, tsup builds, shared ESLint flat config, GitHub Actions CI (build, lint, typecheck, test of every package, core-only coverage; Node 22/24). Playground has its own `lint` / `typecheck` scripts and is part of the Quality Gate.
 
 ### `@react-insight/core`
 Generic `Runtime`, `PluginManager`, plugin lifecycle (atomic registration, rollback on `setup()` failure, LIFO `destroy()`, state protection), `definePlugin()`, built-in Logger Plugin (factory). Event system is `mitt` inside `Runtime`.
@@ -39,7 +39,7 @@ The integration environment: imports workspace packages as an external app would
 ## Not started
 
 - Timeline (needs a per-event history in `ComponentRegistry`).
-- npm release of the packages (publishing readiness: READMEs, versioning, `exports` checks).
+- npm release of the packages. Publishing readiness so far: package metadata, per-package README and LICENSE, root README and CHANGELOG. Remaining: tarball verification (`pnpm pack`, `publint`, `attw`).
 - Session management.
 - A nested custom-hook tree for `inspectHookNames()` (no consumer).
 - A React hook wrapper for the inspector (no consumer).
@@ -57,13 +57,13 @@ SOLID and clean architecture; incremental change; strict TypeScript (never relax
 
 ## Quality
 
-Core coverage is about 92% statements, 91% lines, 85% branches, 88% functions (thresholds 90 / 90 / 80 / 85), enforced by Vitest and CI for Core only; the other packages meet the same lint/typecheck/build/test bar without a coverage script. Every change passes `pnpm lint && pnpm typecheck && pnpm build && pnpm test`. Changes touching Component Discovery, Render / Hook / Context Tracking or on-demand hook resolution also need manual end-to-end validation in Playground.
+Core coverage thresholds (statements 90, lines 90, functions 85, branches 80) are enforced by Vitest and CI for Core only; the other packages meet the same build/lint/typecheck/test bar without a coverage script. Every change passes `pnpm build && pnpm lint && pnpm typecheck && pnpm test` (`build` first, because workspace packages resolve each other through `dist`) and then the CI run, which must be checked rather than assumed. Changes touching Component Discovery, Render / Hook / Context Tracking or on-demand hook resolution also need manual end-to-end validation in Playground.
 
 ---
 
 ## Current focus
 
-Phase 3: the DevTools panel is its own package (`@react-insight/devtools`) and Playground consumes it. Candidates for the next slice: npm publishing readiness (no pipeline change); design Timeline (history structure in the registry); fix sibling order (sibling index in the always-on pipeline); the last two need a short approved design first. See `ROADMAP.md`.
+Phase 3: the DevTools panel is its own package (`@react-insight/devtools`) and Playground consumes it. Candidates for the next slice: finish npm publishing readiness (tarball verification; no pipeline change); design Timeline (history structure in the registry); fix sibling order (sibling index in the always-on pipeline); the last two need a short approved design first. See `ROADMAP.md`.
 
 ---
 

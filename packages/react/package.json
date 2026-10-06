@@ -1,7 +1,27 @@
 {
   "name": "@react-insight/react",
   "version": "0.1.0",
-  "description": "React integration for React Insight",
+  "description": "React integration for React Insight: component discovery and a typed read-only API.",
+  "keywords": [
+    "react",
+    "react-insight",
+    "devtools",
+    "debugging",
+    "inspection",
+    "typescript"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/afraz-saeed1986/react-insight.git"
+  },
+  "homepage": "https://github.com/afraz-saeed1986/react-insight",
+  "bugs": {
+    "url": "https://github.com/afraz-saeed1986/react-insight/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
