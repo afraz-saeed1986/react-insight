@@ -41,23 +41,27 @@ after the condensed history.
 2. `README.md` and `LICENSE` added to each of the four packages.
 3. Root `README.md` rewritten (it still described only Phase 1) and `CHANGELOG.md` rewritten as one Unreleased section (it still listed removed internals such as `EventBus`).
 4. `ci.yml` fixed (below) and Core tests added (below).
+5. Tarball verification: `publint` and `attw` added as root devDependencies; `pnpm pack` per package; `@react-insight/react` gained the missing `license`/`repository`/`keywords`/`engines` metadata (publint flagged it). `pnpm publish -r --dry-run` succeeded for all four packages.
+6. Fresh-app smoke test of the packed tarballs (second real finding, below) and the README/Playground fix.
 
 **Real finding: CI had been red or incomplete, and nobody noticed.** After step 3 the developer reported CI failing on `typecheck`, then realized that several earlier pushes had also been red and had been read as green. Causes found from the logs, not guessed:
 - `typecheck` ran before `build`, so on a fresh clone `@react-insight/react` could not resolve `@react-insight/core` (TS2307). Locally this was hidden by existing `dist` folders.
 - The Test step ran only `@react-insight/core`'s tests, so `react`, `inspector` and `devtools` tests never ran in CI.
 - Once the Core coverage step actually ran, it failed: statements/lines 87.3% and functions 80.76% against thresholds of 90/90/85. Causes: untested `src/dev.ts` scratch file (0%, removed after confirming nothing referenced it), untested `PluginManager.has()` and `size`, and untested `PluginContext.emit()`/`on()` and unsubscribe paths in `Runtime`. Fixed with four new tests, thresholds unchanged.
 
+**Real finding 2: the hook install pattern in the README was wrong.** Installing the tarballs into a fresh Vite app worked in `vite dev` but the production preview showed "No components to show" (`__REACT_DEVTOOLS_GLOBAL_HOOK__.renderers.size` was 0). ES `import`s run before the importing file's body, so `installReactDevtoolsHook()` placed above the `react-dom` import actually ran after it, and `react-dom` injects only once at module load (confirmed in `react-dom@19.3.0` source). Dev hid it because `@vitejs/plugin-react` installs react-refresh's hook first (verified in `react-refresh@0.19.0`: same six keys, `inject()` never fills `renderers`, so `renderers.size` is always 0 in dev and was a misleading check). Fix: documented and used the separate-module pattern (`installHook.ts` as the first import) in both READMEs and Playground; no library code changed. Verified in the fresh app and in Playground production preview (`renderers.size` = 1, tree populated).
+
 **Fix.** `ci.yml` now runs build, lint, typecheck, `pnpm test` for all packages, then `test:coverage` for Core. Local Gate order is `pnpm build && pnpm lint && pnpm typecheck && pnpm test`.
 
 **Verification.** After the last push the developer reported local tests passing and CI green, stating explicitly that this time the run was checked.
 
-**Process lesson.** "CI passed" is only recorded after the run itself is looked at (`gh run list`), never from a general impression.
+**Process lessons.** (1) "CI passed" is only recorded after the run itself is looked at (`gh run list`), never from a general impression. (2) Before a release, test the packed tarballs in a fresh app against a production build; the dev server and package tests cannot catch hook-ordering mistakes.
 
-**Known issues.** Sibling order follows registry insertion order (needs design). Flash replays on first paint and when toggling "Show unmounted". Core's current coverage numbers are not recorded in docs (CI reports them). Not yet published to npm.
+**Known issues.** Sibling order follows registry insertion order (needs design). Flash replays on first paint and when toggling "Show unmounted". Core's current coverage numbers are not recorded in docs (CI reports them). Not yet published to npm; the real publish needs the developer's npm login and 2FA. An `@react-insight/react/install` entry point (one import, no ordering pitfall) was considered and deferred.
 
-**Documentation.** `ARCHITECTURE.md` and `PROJECT_CONTEXT.md` updated for the Gate order, CI contents and publishing readiness; this file, `DECISIONS.md` and `ROADMAP.md` follow in the same sync.
+**Documentation.** `ARCHITECTURE.md`, `PROJECT_CONTEXT.md`, `DECISIONS.md` (CI entry, publishing metadata entry, hook-install entry) and this file updated; `ROADMAP.md` follows.
 
-**Next recommended step.** Step 4 of publishing readiness: add `publint` and `@arethetypeswrong/cli`, run `pnpm pack` per package and inspect the tarballs (contents, resolved `workspace:^` ranges).
+**Next recommended step.** The real first publish of `0.1.0` (developer-run, order `core` → `react` → `inspector` → `devtools`, after `npm login`/2FA); then decide between an `@react-insight/react/install` design, sibling order, or Timeline.
 
 ---
 

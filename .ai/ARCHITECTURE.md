@@ -49,7 +49,7 @@ Public surface: the `Insight` facade with `use()`, `destroy()`, `getComponents()
 
 **Registration timing.** Root lifecycle is registered from a React effect (it only needs "a Provider mounted"). Component Discovery is registered **eagerly in `createInsight()`**, before `createRoot().render()`: an effect runs after the commit that triggers it and so can never see the tree's first commit. Because discovery connects before root lifecycle, an early commit tags components with `rootId: "pending"`, which self-heals on the next commit.
 
-**`installReactDevtoolsHook()`.** `react-dom` checks for `__REACT_DEVTOOLS_GLOBAL_HOOK__` once, at module init, and calls `hook.inject()`. A missing hook (or one without `inject()`) means React never reports commits for that page. So the hook must be installed before `react-dom` is imported; it is exported as a standalone function (the one deliberate exception to "nothing under `internal/` is exported"). `connectHookAdapter()` also calls it defensively.
+**`installReactDevtoolsHook()`.** `react-dom` checks for `__REACT_DEVTOOLS_GLOBAL_HOOK__` once, at module init, and calls `hook.inject()`. A missing hook (or one without `inject()`) means React never reports commits for that page. So the hook must be installed before `react-dom` is evaluated. Since ES `import`s are evaluated before the importing file's body, the call must live in **its own module that is the first import** of the entry file (Playground: `installHook.ts`); calling it in the same file as the `react-dom` import is too late. A Vite dev server hides this mistake because react-refresh installs its own hook first (its `renderers` map stays empty, so `renderers.size` is only a valid check in production builds). It is exported as a standalone function (the one deliberate exception to "nothing under `internal/` is exported"). `connectHookAdapter()` also calls it defensively. See `DECISIONS.md`, 2026-10-07.
 
 **StrictMode.** Effects run mount → cleanup → mount in development, and register/unregister are asynchronous. `useRootLifecycle` chains every operation on a per-hook promise so they stay strictly ordered.
 
@@ -124,6 +124,8 @@ GitHub Actions (`.github/workflows/ci.yml`, Node 22/24, `pnpm install --frozen-l
 
 Changes touching Component Discovery, Render / Hook / Context Tracking or on-demand hook resolution also require manual Playground validation. A change is complete only after all gates pass, including CI.
 
+Before a release, the packed tarballs (`pnpm pack`) are checked with `publint` and `@arethetypeswrong/cli`, installed into a fresh app, and exercised through a **production build and preview**, because the Playground dev server cannot catch hook-ordering mistakes (see above).
+
 ## Publishing readiness
 
-Publishable packages: `core`, `react`, `inspector`, `devtools` (version `0.1.0`, MIT, ESM only, `files: ["dist"]`, `publishConfig.access: "public"`). Each has its own `README.md` and `LICENSE`. Inter-package dependencies, and the `devtools` peerDependency on `@react-insight/react`, use `workspace:^`, which publishes as `^0.1.0` (an exact version would be too strict for peers). Nothing has been published to npm yet; tarball verification is the next step.
+Publishable packages: `core`, `react`, `inspector`, `devtools` (version `0.1.0`, MIT, ESM only, `files: ["dist"]`, `publishConfig.access: "public"`). Each has its own `README.md` and `LICENSE`. Inter-package dependencies, and the `devtools` peerDependency on `@react-insight/react`, use `workspace:^`, which publishes as `^0.1.0` (an exact version would be too strict for peers). Nothing has been published to npm yet. Tarball verification (contents, `^0.1.0` ranges, `publint`, `attw`, fresh-app production smoke test) passed on 2026-10-06/07.

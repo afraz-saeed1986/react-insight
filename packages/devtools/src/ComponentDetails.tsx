@@ -12,12 +12,6 @@ interface ComponentDetailsProps {
   readonly onClose: () => void;
 }
 
-const boxStyle = {
-  border: "1px solid #ccc",
-  padding: 8,
-  fontFamily: "monospace",
-} as const;
-
 function formatTime(timestamp: number | null): string {
   return timestamp === null ? "—" : new Date(timestamp).toLocaleTimeString();
 }
@@ -34,9 +28,9 @@ export function ComponentDetails({
 }: ComponentDetailsProps) {
   if (!snapshot) {
     return (
-      <div style={boxStyle}>
-        <p>This component is no longer tracked.</p>
-        <button type="button" onClick={onClose}>
+      <div>
+        <p className="ri-note">This component is no longer tracked.</p>
+        <button type="button" className="ri-btn" onClick={onClose}>
           Close
         </button>
       </div>
@@ -44,57 +38,78 @@ export function ComponentDetails({
   }
 
   const rows = mergeHookInfo(snapshot.hooks, inspection?.hookNames);
-  const namesUnavailable = inspection !== null && inspection.hookNames === undefined;
+  const namesUnavailable =
+    inspection !== null && inspection.hookNames === undefined;
 
   return (
-    <div style={boxStyle}>
-      <div>
-        <strong>{snapshot.displayName}</strong> — {snapshot.status}{" "}
-        <button type="button" onClick={onReinspect}>
+    <div>
+      <div className="ri-d-head">
+        <span className="ri-d-name">{snapshot.displayName}</span>
+        <span
+          className={
+            snapshot.status === "mounted"
+              ? "ri-status ri-status--mounted"
+              : "ri-status"
+          }
+        >
+          {snapshot.status}
+        </span>
+        <span className="ri-spacer" />
+        <button type="button" className="ri-btn" onClick={onReinspect}>
           Re-inspect
-        </button>{" "}
-        <button type="button" onClick={onClose}>
+        </button>
+        <button type="button" className="ri-btn" onClick={onClose}>
           Close
         </button>
       </div>
 
-      <div>renders: {snapshot.renderCount}</div>
-      <div>mounted: {formatTime(snapshot.mountedAt)}</div>
-      <div>last rendered: {formatTime(snapshot.lastRenderedAt)}</div>
-      <div>unmounted: {formatTime(snapshot.unmountedAt)}</div>
+      <dl className="ri-stats">
+        <dt>renders</dt>
+        <dd>{snapshot.renderCount}</dd>
+        <dt>mounted</dt>
+        <dd>{formatTime(snapshot.mountedAt)}</dd>
+        <dt>last rendered</dt>
+        <dd>{formatTime(snapshot.lastRenderedAt)}</dd>
+        <dt>unmounted</dt>
+        <dd>{formatTime(snapshot.unmountedAt)}</dd>
+      </dl>
 
-      <h4>Hooks</h4>
+      <h4 className="ri-section">Hooks</h4>
       {namesUnavailable && (
-        <p>
+        <p className="ri-note">
           Hook names unavailable (class component, or React internals not
           accessible in this environment).
         </p>
       )}
-     {rows.length === 0 ? (
-        <p>
-          No stateful hooks
-          {snapshot.contexts.length > 0 ? " (see Contexts for useContext)" : ""}.
-        </p>
+      {rows.length === 0 ? (
+        <p className="ri-note">No hooks.</p>
       ) : (
-        <ol start={0}>
+        <ul className="ri-list">
           {rows.map((row) => (
-            <li key={row.index}>
-              {row.hookName ?? row.kind}
-              {row.customHookName ? ` ← ${row.customHookName}` : ""}
-              {row.value !== undefined ? ` = ${formatValue(row.value)}` : ""}
+            <li key={row.index} className="ri-item">
+              <span className="ri-idx">{row.index}</span>
+              <span className="ri-item-name">
+                {row.hookName ?? row.kind}
+                {row.customHookName ? ` ← ${row.customHookName}` : ""}
+              </span>
+              {row.value !== undefined && (
+                <span className="ri-value">{formatValue(row.value)}</span>
+              )}
             </li>
           ))}
-        </ol>
+        </ul>
       )}
 
-      <h4>Contexts</h4>
+      <h4 className="ri-section">Contexts</h4>
       {snapshot.contexts.length === 0 ? (
-        <p>No contexts.</p>
+        <p className="ri-note">No contexts.</p>
       ) : (
-        <ul>
+        <ul className="ri-list">
           {snapshot.contexts.map((ctx) => (
-            <li key={ctx.index}>
-              {ctx.displayName} = {formatValue(ctx.value)}
+            <li key={ctx.index} className="ri-item">
+              <span className="ri-idx">{ctx.index}</span>
+              <span className="ri-item-name">{ctx.displayName}</span>
+              <span className="ri-value">{formatValue(ctx.value)}</span>
             </li>
           ))}
         </ul>

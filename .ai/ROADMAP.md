@@ -31,7 +31,7 @@ Delivered: on-demand `Insight.inspectHookNames()`; `@react-insight/inspector`; `
 - `@react-insight/inspector` — `inspectComponent(insight, id)`.
 - **Playground as a gated package** (2026-10-04): `lint` / `typecheck` scripts (its unit tests moved with the panel code).
 - **`@react-insight/devtools`** (2026-10-04): `DevtoolsPanel` (only public export): `buildComponentTree`, `excludeSubtrees` (self-observation guard, root matched by explicit `displayName`), `mergeHookInfo`, `filterComponentTree`, `filterByMinRenders`, `summarizeComponent`, tree / detail components, render flash; 34 unit tests; `react` and `@react-insight/react` as peerDependencies. Playground consumes it like an external app.
-- **Publishing readiness, steps 1-3** (2026-10-05): `publishConfig.access`, `workspace:^` ranges, per-package README and LICENSE, root README and CHANGELOG rewritten, Core tests added to meet coverage thresholds.
+- **Publishing readiness, steps 1-4** (2026-10-05 to 07): `publishConfig.access`, `workspace:^` ranges, per-package README and LICENSE, root README and CHANGELOG, Core tests added to meet coverage thresholds, tarballs verified (`pnpm pack`, `publint`, `attw`, `pnpm publish -r --dry-run`), fresh-app smoke test against a production build (found and fixed the hook-install pattern in the READMEs and Playground; see `DECISIONS.md`, 2026-10-07).
 - Housekeeping: orphaned `EventBus` system, archive folder, empty stub files and dead Playground files removed; `InsightContext.displayName` set; `ComponentSnapshot` exported.
 
 ---
@@ -43,7 +43,8 @@ Candidates, each needing a short design approved before code (npm publishing rea
 1. **Timeline** — needs a per-event history structure in `ComponentRegistry` (today only latest state is kept); an always-on hot-path change, so design first (ring buffer / memory cap / event schema / public API).
 2. **Correct sibling order** — the tree orders siblings by registry insertion order, not React child order (visible after a re-mount). Needs a sibling index in the always-on pipeline.
 3. Panel polish with no pipeline change, if wanted: expand/collapse, keyboard navigation, copy snapshot as JSON.
-4. **npm publishing readiness, remaining** — step 4: add `publint` and `@arethetypeswrong/cli`, run `pnpm pack` per package and inspect the tarballs (contents, resolved `workspace:^` ranges). Then decide the first publish (all four packages at `0.1.0`, manual, no Changesets yet). No code-path changes. **Recommended next.**
+4. **First npm publish of `0.1.0`** — developer-run (needs npm login and 2FA; irreversible, versions can only be deprecated): order `core` → `react` → `inspector` → `devtools`. Technical readiness is done. **Recommended next.**
+5. **`@react-insight/react/install` entry point** — one `import` line that installs the hook, removing the ordering pitfall from the READMEs. New public API, so it needs a short design first.
 
 ---
 

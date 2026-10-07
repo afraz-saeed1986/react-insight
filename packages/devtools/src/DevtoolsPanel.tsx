@@ -10,6 +10,7 @@ import { ComponentTreeView } from "./ComponentTreeView";
 import { excludeSubtrees } from "./excludeSubtrees";
 import { filterByMinRenders } from "./filterByMinRenders";
 import { filterComponentTree } from "./filterComponentTree";
+import { PANEL_CSS } from "./styles";
 
 /**
  * این مقدار به‌عنوان `DevtoolsPanel.displayName` ست می‌شود (انتهای فایل).
@@ -27,7 +28,11 @@ function readComponents(insight: Insight): ComponentSnapshot[] {
   );
 }
 
-export function DevtoolsPanel() {
+interface PanelBodyProps {
+  onClose: () => void;
+}
+
+function PanelBody({ onClose }: PanelBodyProps) {
   const insight = useInsight();
   const lastSerializedRef = useRef<string | null>(null);
 
@@ -97,7 +102,7 @@ export function DevtoolsPanel() {
     setInspection(inspectComponent(insight, selectedId) ?? null);
   };
 
-  const handleClose = () => {
+  const handleCloseDetails = () => {
     setSelectedId(null);
     setInspection(null);
   };
@@ -108,50 +113,96 @@ export function DevtoolsPanel() {
       : components.find((c) => c.id === selectedId);
 
   return (
-    <div style={{ marginTop: 16, fontFamily: "monospace" }}>
-      <button type="button" onClick={() => refresh(true)}>
-        Refresh snapshot
-      </button>{" "}
-      <label>
+    <section className="ri-panel" aria-label="React Insight">
+      <div className="ri-header">
+        <span className="ri-title">React Insight</span>
         <input
-          type="checkbox"
-          checked={includeUnmounted}
-          onChange={(e) => setIncludeUnmounted(e.target.checked)}
-        />{" "}
-             Show unmounted
-      </label>{" "}
-      <input
-        type="search"
-        placeholder="Filter by name"
-        value={query}
-              onChange={(e) => setQuery(e.target.value)}
-      />{" "}
-      <input
-        type="number"
-        min={1}
-        placeholder="Min renders"
-        value={minRendersInput}
-        onChange={(e) => setMinRendersInput(e.target.value)}
-        style={{ width: 110 }}
-      />
+          type="search"
+          className="ri-input ri-input--search"
+          placeholder="Filter by name"
+          aria-label="Filter by name"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <input
+          type="number"
+          min={1}
+          className="ri-input ri-input--number"
+          placeholder="Min renders"
+          aria-label="Minimum renders"
+          value={minRendersInput}
+          onChange={(e) => setMinRendersInput(e.target.value)}
+        />
+        <label className="ri-switch">
+          <input
+            type="checkbox"
+            checked={includeUnmounted}
+            onChange={(e) => setIncludeUnmounted(e.target.checked)}
+          />
+          Show unmounted
+        </label>
+        <span className="ri-spacer" />
+        <button
+          type="button"
+          className="ri-btn"
+          title="Refresh snapshot"
+          onClick={() => refresh(true)}
+        >
+          Refresh
+        </button>
+        <button
+          type="button"
+          className="ri-btn"
+          aria-label="Close panel"
+          title="Close panel"
+          onClick={onClose}
+        >
+          ✕
+        </button>
+      </div>
 
-      <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
-        <div style={{ minWidth: 260 }}>
+      <div className="ri-body">
+        <div className="ri-tree-pane">
           <ComponentTreeView
             nodes={tree}
             selectedId={selectedId}
             onSelect={handleSelect}
           />
         </div>
-        {selectedId !== null && (
-          <ComponentDetails
-            snapshot={selectedSnapshot}
-            inspection={inspection}
-            onReinspect={handleReinspect}
-            onClose={handleClose}
-          />
-        )}
+        <div className="ri-details-pane">
+          {selectedId !== null ? (
+            <ComponentDetails
+              snapshot={selectedSnapshot}
+              inspection={inspection}
+              onReinspect={handleReinspect}
+              onClose={handleCloseDetails}
+            />
+          ) : (
+            <div className="ri-empty">Select a component to inspect it.</div>
+          )}
+        </div>
       </div>
+    </section>
+  );
+}
+
+export function DevtoolsPanel() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="ri-root">
+      <style>{PANEL_CSS}</style>
+      {open ? (
+        <PanelBody onClose={() => setOpen(false)} />
+      ) : (
+        <button
+          type="button"
+          className="ri-toggle"
+          onClick={() => setOpen(true)}
+        >
+          React Insight
+        </button>
+      )}
     </div>
   );
 }
