@@ -1,5 +1,4 @@
-import { installReactDevtoolsHook } from "@react-insight/react";
-installReactDevtoolsHook();
+import "./installHook"; // must stay the first import
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

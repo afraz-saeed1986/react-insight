@@ -17,13 +17,20 @@ Requires React >= 19 and Node.js >= 22. ESM only.
 
 ## Setup
 
-`installReactDevtoolsHook()` must run **before `react-dom` is imported**,
-because React reads the DevTools global hook once, at module load. Put it
-first in your entry file:
+React reads the DevTools global hook **once, when `react-dom` is first loaded**. `installReactDevtoolsHook()` must therefore run before `react-dom` is evaluated.
+
+Do not call it in the same file that imports `react-dom`: ES module `import`s are evaluated before the body of the importing file, so the call would come too late (it can appear to work in a dev server and fail in a production bundle). Put it in its own module and import that module first:
+
+```ts
+// src/installHook.ts
+import { installReactDevtoolsHook } from "@react-insight/react";
+
+installReactDevtoolsHook();
+```
 
 ```tsx
-import { installReactDevtoolsHook } from "@react-insight/react";
-installReactDevtoolsHook();
+// src/main.tsx
+import "./installHook"; // must stay the first import
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -43,6 +50,8 @@ createRoot(document.getElementById("root")!).render(
 ```
 
 `createInsight()` must be called before the first render so the first commit is observed.
+
+If a production build shows no components, check `window.__REACT_DEVTOOLS_GLOBAL_HOOK__.renderers.size` in the browser console: `0` means React loaded before the hook was installed. This check only applies to production builds: a dev server with Fast Refresh (for example `@vitejs/plugin-react`) installs its own hook first, so `renderers.size` is always `0` there and tells you nothing.
 
 ## API
 

@@ -49,11 +49,18 @@ Once published:
 pnpm add @react-insight/react @react-insight/devtools react react-dom
 ```
 
-`installReactDevtoolsHook()` must run **before `react-dom` is imported**:
+`installReactDevtoolsHook()` must run **before `react-dom` is evaluated**, so call it from its own module and import that module first (imports are evaluated before the importing file's body, so calling it in the same file is too late):
+
+```ts
+// src/installHook.ts
+import { installReactDevtoolsHook } from "@react-insight/react";
+
+installReactDevtoolsHook();
+```
 
 ```tsx
-import { installReactDevtoolsHook } from "@react-insight/react";
-installReactDevtoolsHook();
+// src/main.tsx
+import "./installHook"; // must stay the first import
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
