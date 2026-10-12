@@ -1,6 +1,7 @@
 import { createContext, useContext, useState } from "react";
 
 import { DevtoolsPanel } from "@react-insight/devtools";
+import { Fixtures } from "./Fixtures";
 
 function Display({ count }: { count: number }) {
   return <p>Count: {count}</p>;
@@ -43,6 +44,7 @@ export function App() {
       <ThemeContext.Provider value="dark">
         <ContextProbe />
       </ThemeContext.Provider>
+      <Fixtures />
       <DevtoolsPanel />
     </div>
   );

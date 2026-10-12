@@ -1,4 +1,13 @@
-import { Component, forwardRef, memo, useCallback, useMemo, useReducer, useState } from "react";
+import {
+  Component,
+  forwardRef,
+  memo,
+  useCallback,
+  useId,
+  useMemo,
+  useReducer,
+  useState,
+} from "react";
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -140,6 +149,41 @@ describe("resolveHookNames", () => {
     const names = resolveHookNames(fiber, requireDispatcherRef());
 
     expect(names?.[0]?.customHookName).toBeUndefined();
+  });
+
+  it("does not report a bogus customHookName for fallback hooks like useId", () => {
+    function IdComponent() {
+      useId();
+      useState(0);
+      return <div />;
+    }
+
+    const { container } = render(<IdComponent />);
+    const fiber = findComponentFiber(container.firstChild!, IdComponent);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useId" },
+      { index: 1, hookName: "useState" },
+    ]);
+  });
+
+  it("does not attempt custom hook name resolution for fallback hooks", () => {
+    function useCustomId() {
+      return useId();
+    }
+    function CustomIdComponent() {
+      useCustomId();
+      return <div />;
+    }
+
+    const { container } = render(<CustomIdComponent />);
+    const fiber = findComponentFiber(container.firstChild!, CustomIdComponent);
+
+    // Documented trade-off: fallback hooks skip custom-hook-name
+    // resolution, so the wrapping custom hook is not reported.
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useId" },
+    ]);
   });
 
   it("does not mutate real hook state (safe to call repeatedly)", () => {

@@ -246,4 +246,10 @@ export const PANEL_CSS = `
   word-break: break-all;
 }
 .ri-note { color: var(--ri-muted); margin: 0 0 6px; }
+.ri-stamp {
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--ri-muted);
+  font-size: 11px;
+}
 `;

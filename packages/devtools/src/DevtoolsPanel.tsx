@@ -42,6 +42,7 @@ function PanelBody({ onClose }: PanelBodyProps) {
   const [minRendersInput, setMinRendersInput] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspection, setInspection] = useState<ComponentInspection | null>(null);
+  const [inspectedAt, setInspectedAt] = useState<number | null>(null);
 
   const refresh = useCallback(
     (force: boolean) => {
@@ -95,16 +96,19 @@ function PanelBody({ onClose }: PanelBodyProps) {
   const handleSelect = (id: string) => {
     setSelectedId(id);
     setInspection(inspectComponent(insight, id) ?? null);
+    setInspectedAt(Date.now());
   };
 
   const handleReinspect = () => {
     if (selectedId === null) return;
     setInspection(inspectComponent(insight, selectedId) ?? null);
+    setInspectedAt(Date.now());
   };
 
   const handleCloseDetails = () => {
     setSelectedId(null);
     setInspection(null);
+    setInspectedAt(null);
   };
 
   const selectedSnapshot =
@@ -175,6 +179,7 @@ function PanelBody({ onClose }: PanelBodyProps) {
               snapshot={selectedSnapshot}
               inspection={inspection}
               onReinspect={handleReinspect}
+              inspectedAt={inspectedAt}
               onClose={handleCloseDetails}
             />
           ) : (

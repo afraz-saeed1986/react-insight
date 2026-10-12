@@ -16,9 +16,11 @@ export interface HookSummary {
    * Present for kind === "state" (useState/useReducer — the value
    * itself), "ref" (useRef — the ref's current contents, not the
    * { current } wrapper object), and "memo-like" (useMemo/useCallback
-   * — the memoized value itself, not the dependency array). Absent
-   * for "effect" | "layout-effect" | "unknown", which carry no
-   * previewable value.
+   * — the memoized value itself, not the dependency array). Also
+   * present for kind === "unknown" when the stored state is a plain
+   * primitive (e.g. useId's string). Absent for "effect" |
+   * "layout-effect", and for "unknown" hooks whose stored state is
+   * not a primitive.
    */
   readonly value?: HookValuePreview;
 }
@@ -92,6 +94,21 @@ function classifyHook(hook: HookNode): HookKind {
 const KINDS_WITH_VALUE = new Set<HookKind>(["state", "ref", "memo-like"]);
 
 /**
+ * "unknown" hooks (useId, useDeferredValue, ...) have no known shape,
+ * but when their stored state is a plain primitive it is safe and
+ * useful to preview as-is. Objects and functions are skipped: without
+ * a known shape we cannot tell what they mean.
+ */
+function isPrimitiveUnknown(kind: HookKind, memoizedState: unknown): boolean {
+  return (
+    kind === "unknown" &&
+    (typeof memoizedState === "string" ||
+      typeof memoizedState === "number" ||
+      typeof memoizedState === "boolean")
+  );
+}
+
+/**
  * Extracts the previewable value for an already-classified hook,
  * mirroring the exact shape checks classifyHook() used to arrive at
  * that kind in the first place:
@@ -117,6 +134,9 @@ function extractHookValue(kind: HookKind, memoizedState: unknown): unknown {
       return (memoizedState as { current: unknown }).current;
     case "memo-like":
       return (memoizedState as readonly [unknown, unknown])[0];
+    case "unknown":
+      // Only reached for primitive state (see isPrimitiveUnknown).
+      return memoizedState;
     default:
       return undefined;
   }
@@ -154,8 +174,10 @@ export function inspectHooks(fiber: FiberNode): HookSummary[] {
 
   while (hook) {
     const kind = classifyHook(hook);
+    const hasValue =
+      KINDS_WITH_VALUE.has(kind) || isPrimitiveUnknown(kind, hook.memoizedState);
     summaries.push(
-      KINDS_WITH_VALUE.has(kind)
+      hasValue
         ? { index, kind, value: previewHookValue(extractHookValue(kind, hook.memoizedState)) }
         : { index, kind },
     );

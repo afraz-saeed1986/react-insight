@@ -177,7 +177,7 @@ function resolveCustomHookName(
  * documented trade-off rather than a silent gap.
  */
 function createInstrumentedDispatcher(
-  recordCall: (hookName: string) => void,
+  recordCall: (hookName: string, resolveCustomName?: boolean) => void,
   nextNode: () => HookNode | null,
 ): Record<string, (...args: unknown[]) => unknown> {
   const explicit: Record<string, (...args: unknown[]) => unknown> = {
@@ -232,10 +232,10 @@ function createInstrumentedDispatcher(
     },
   };
 
-   // Note: recordCall() is the same function whether reached through
-  // an explicit method or this fallback — resolveCustomHookName()
-  // itself is what limits custom-hook-name resolution to the
-  // explicitly-modeled kinds, by only recognizing their frame names.
+    // Fallback hooks (useId, useTransition, ...) skip custom-hook-name
+  // resolution (resolveCustomName = false): their synthetic Proxy frame
+  // has no predictable name, and resolving it produced a bogus
+  // "<anonymous>" custom hook name.
   return new Proxy(explicit, {
     get(target, prop: string) {
       if (prop in target) {
@@ -243,7 +243,7 @@ function createInstrumentedDispatcher(
       }
 
          return () => {
-        recordCall(prop);
+        recordCall(prop, false);
         const node = nextNode();
         return node?.memoizedState;
       };
@@ -286,8 +286,10 @@ export function resolveHookNames(
     return node;
   }
 
-  function recordCall(hookName: string): void {
-    const customHookName = resolveCustomHookName(new Error().stack, componentFunctionName);
+  function recordCall(hookName: string, resolveCustomName = true): void {
+    const customHookName = resolveCustomName
+      ? resolveCustomHookName(new Error().stack, componentFunctionName)
+      : undefined;
     calls.push(
       customHookName
         ? { index: hookIndex, hookName, customHookName }

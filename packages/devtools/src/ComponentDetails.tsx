@@ -8,7 +8,9 @@ interface ComponentDetailsProps {
   readonly snapshot: ComponentSnapshot | undefined;
   /** Result of the last explicit inspection, if any. */
   readonly inspection: ComponentInspection | null;
-  readonly onReinspect: () => void;
+    readonly onReinspect: () => void;
+  /** زمان آخرین inspection؛ بازخورد دیداری برای Re-inspect. */
+  readonly inspectedAt: number | null;
   readonly onClose: () => void;
 }
 
@@ -24,6 +26,7 @@ export function ComponentDetails({
   snapshot,
   inspection,
   onReinspect,
+  inspectedAt,
   onClose,
 }: ComponentDetailsProps) {
   if (!snapshot) {
@@ -52,8 +55,13 @@ export function ComponentDetails({
               : "ri-status"
           }
         >
-          {snapshot.status}
+             {snapshot.status}
         </span>
+        {inspectedAt !== null && (
+          <span key={inspectedAt} className="ri-stamp ri-flash">
+            inspected {formatTime(inspectedAt)}
+          </span>
+        )}
         <span className="ri-spacer" />
         <button type="button" className="ri-btn" onClick={onReinspect}>
           Re-inspect

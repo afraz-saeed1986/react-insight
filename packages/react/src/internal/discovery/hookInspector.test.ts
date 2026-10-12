@@ -70,7 +70,7 @@ describe("inspectHooks", () => {
   });
 
   it("classifies an unrecognized shape as 'unknown' instead of throwing", () => {
-    const hook = hookNode("something-unexpected");
+    const hook = hookNode({ something: "unexpected" });
     const fiber = functionComponentFiber(chain(hook));
 
     expect(inspectHooks(fiber)).toEqual([{ index: 0, kind: "unknown" }]);
@@ -89,12 +89,12 @@ describe("inspectHooks", () => {
     ]);
   });
 
-  it("includes a shallow value preview for state/ref/memo-like hooks, and no value for effect/layout-effect/unknown", () => {
+  it("includes a shallow value preview for state/ref/memo-like hooks, and no value for effect/layout-effect/non-primitive unknown", () => {
     const stateHook = hookNode(42, { dispatch: () => {} });
     const refHook = hookNode({ current: "hello" });
     const memoHook = hookNode(["memoized", []]);
     const effectHook = hookNode({ tag: 9, create: () => {}, deps: null, next: null });
-    const unknownHook = hookNode("something-unexpected");
+    const unknownHook = hookNode({ something: "unexpected" });
     const fiber = functionComponentFiber(
       chain(stateHook, refHook, memoHook, effectHook, unknownHook),
     );
@@ -126,6 +126,36 @@ describe("inspectHooks", () => {
     ]);
   });
 
+
+  it("previews a string stored in an 'unknown' hook (e.g. useId)", () => {
+    const hook = hookNode(":r0:");
+    const fiber = functionComponentFiber(chain(hook));
+
+    expect(inspectHooks(fiber)).toEqual([
+      { index: 0, kind: "unknown", value: ":r0:" },
+    ]);
+  });
+
+  it("previews number and boolean primitives stored in 'unknown' hooks", () => {
+    const fiber = functionComponentFiber(chain(hookNode(7), hookNode(true)));
+
+    expect(inspectHooks(fiber)).toEqual([
+      { index: 0, kind: "unknown", value: 7 },
+      { index: 1, kind: "unknown", value: true },
+    ]);
+  });
+
+  it("does not preview non-primitive or empty state of an 'unknown' hook", () => {
+    const fiber = functionComponentFiber(
+      chain(hookNode({ something: "unexpected" }), hookNode(() => {}), hookNode(null)),
+    );
+
+    expect(inspectHooks(fiber)).toEqual([
+      { index: 0, kind: "unknown" },
+      { index: 1, kind: "unknown" },
+      { index: 2, kind: "unknown" },
+    ]);
+  });
 
   it("returns an empty array for class components instead of walking this.state as hooks", () => {
     class AnyClassComponent {
