@@ -52,7 +52,7 @@ where you want it in your layout. Render it only in development.
 - Selecting a component, or pressing **Re-inspect**, runs an on-demand inspection that **re-executes that component's render body**. Nothing is inspected automatically.
 - The panel excludes itself and everything it renders from what it displays (`displayName: "ReactInsightDevtools"`), so it never observes its own renders.
 - Sibling order follows the order components were first discovered, not always React's child order (visible after a re-mount).
-- Hook names are unavailable for class components and in production React builds.
+- Hook names are unavailable for class components. They resolve in production React builds too, but custom hook names degrade in minified builds.
 
 ## License
 

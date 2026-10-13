@@ -155,6 +155,13 @@ function resolveCustomHookName(
     return undefined;
   }
 
+  // Custom hooks must be named `useXxx` (Rules of Hooks). Anything else is
+  // not a custom hook: a minifier-mangled frame (our own internal frames,
+  // e.g. recordCall, lose their names in minified bundles) or an anonymous one.
+  if (!/^use[A-Z0-9]/.test(callerName)) {
+    return undefined;
+  }
+
   return callerName;
 }
 

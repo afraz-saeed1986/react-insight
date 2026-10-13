@@ -105,8 +105,10 @@ export interface Insight {
    * Returns undefined if: the component isn't currently tracked, it
    * isn't a function component (plain function, memo, forwardRef and
    * memo(forwardRef(...)) are supported; class components are not), or
-   * hook name resolution isn't available in this environment (e.g. a
-   * production React build).
+   * React's dispatcher internals aren't accessible in this environment,
+   * or re-invoking the component throws. Hook names resolve in a
+   * production React build too (verified unminified); only custom hook
+   * names degrade under minification, as noted below.
    *
    * Custom hook name resolution degrades under minified production
    * builds, since it reads real function names from the call stack.

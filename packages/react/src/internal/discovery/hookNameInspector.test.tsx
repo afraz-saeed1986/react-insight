@@ -186,6 +186,25 @@ describe("resolveHookNames", () => {
     ]);
   });
 
+  it("does not report a non-hook caller (e.g. a minifier-mangled frame) as a custom hook", () => {
+    // Stands in for a minifier-mangled frame name: real custom hooks must
+    // be named useXxx, so any other caller is not a custom hook.
+    function N() {
+      return useState(0);
+    }
+    function ManglingComponent() {
+      N();
+      return <div />;
+    }
+
+    const { container } = render(<ManglingComponent />);
+    const fiber = findComponentFiber(container.firstChild!, ManglingComponent);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useState" },
+    ]);
+  });
+
   it("does not mutate real hook state (safe to call repeatedly)", () => {
     function Counter() {
       useState(5);

@@ -73,7 +73,7 @@ A `ComponentSnapshot` has `id`, `displayName`, `parentId`, `status`, `renderCoun
 
 ## Things to know
 
-- **`inspectHookNames()` re-executes the component's render body** with an instrumented dispatcher. Call it only in response to an explicit user action, never automatically. It supports function components, `memo`, `forwardRef` and `memo(forwardRef(...))`; not class components, and not production React builds. Custom hook names degrade in minified builds.
+- **`inspectHookNames()` re-executes the component's render body** with an instrumented dispatcher. Call it only in response to an explicit user action, never automatically. It supports function components, `memo`, `forwardRef` and `memo(forwardRef(...))`; not class components. It also works in production React builds, but custom hook names degrade in minified builds.
 - A re-mounted component is a new instance with a new `id`; the old record stays as `unmounted`.
 - `useContext` does not take a hook slot, so it appears under `contexts`, never under `hooks`.
 - One `react-dom` renderer and one React application per page are assumed.

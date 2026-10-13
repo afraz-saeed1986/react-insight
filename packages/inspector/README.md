@@ -35,7 +35,7 @@ resolved still returns a result, with `hookNames: undefined`.
 ## Things to know
 
 - Hook name resolution **re-executes the component's render body**. Call `inspectComponent()` only in response to an explicit action, never on every render or commit.
-- `hookNames` is `undefined` for class components and in production React builds.
+- `hookNames` is `undefined` for class components. It resolves in production React builds too; custom hook names (`customHookName`) degrade in minified builds.
 - This package has no knowledge of React internals; it only calls the public `Insight` API.
 
 ## License
