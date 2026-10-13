@@ -1,3 +1,4 @@
+import type { ComponentTreeNode } from "./buildComponentTree";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInsight } from "@react-insight/react";
 import type { ComponentSnapshot, Insight } from "@react-insight/react";
@@ -59,6 +60,24 @@ function PanelBody({ onClose }: PanelBodyProps) {
       return next;
     });
   }, []);
+
+    const handleExpandAll = useCallback(() => {
+    setCollapsedIds(new Set());
+  }, []);
+
+  const handleCollapseAll = () => {
+    const ids = new Set<string>();
+    const visit = (nodes: readonly ComponentTreeNode[]) => {
+      for (const node of nodes) {
+        if (node.children.length > 0) {
+          ids.add(node.snapshot.id);
+          visit(node.children);
+        }
+      }
+    };
+    visit(tree);
+    setCollapsedIds(ids);
+  };
   
 
   const refresh = useCallback(
@@ -162,6 +181,22 @@ function PanelBody({ onClose }: PanelBodyProps) {
           />
           Show unmounted
         </label>
+                <button
+          type="button"
+          className="ri-btn"
+          title="Expand all"
+          onClick={handleExpandAll}
+        >
+          Expand
+        </button>
+        <button
+          type="button"
+          className="ri-btn"
+          title="Collapse all"
+          onClick={handleCollapseAll}
+        >
+          Collapse
+        </button>
         <span className="ri-spacer" />
         <button
           type="button"
