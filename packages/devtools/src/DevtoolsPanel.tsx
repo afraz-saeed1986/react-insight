@@ -1,3 +1,4 @@
+import { hideMinifiedNames } from "./hideMinifiedNames";
 import type { ComponentTreeNode } from "./buildComponentTree";
 import { focusComponentTree } from "./focusComponentTree";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -50,6 +51,7 @@ function PanelBody({ onClose }: PanelBodyProps) {
     () => new Set(),
   );
     const [focusMode, setFocusMode] = useState(false);
+    const [hideMinified, setHideMinified] = useState(false);
 
   const handleToggle = useCallback((id: string) => {
     setCollapsedIds((prev) => {
@@ -117,17 +119,12 @@ function PanelBody({ onClose }: PanelBodyProps) {
 
   const minRenders = Number.parseInt(minRendersInput, 10);
 
-  const tree = useMemo(
-    () =>
-      filterByMinRenders(
-        filterComponentTree(
-          buildComponentTree(components, { includeUnmounted }),
-          query,
-        ),
-        minRenders,
-      ),
-    [components, includeUnmounted, query, minRenders],
-  );
+  const tree = useMemo(() => {
+    const built = buildComponentTree(components, { includeUnmounted });
+    const visible = hideMinified ? hideMinifiedNames(built) : built;
+
+    return filterByMinRenders(filterComponentTree(visible, query), minRenders);
+  }, [components, includeUnmounted, hideMinified, query, minRenders]);
 
     const focus = useMemo(
     () =>
@@ -199,6 +196,17 @@ function PanelBody({ onClose }: PanelBodyProps) {
             onChange={(e) => setFocusMode(e.target.checked)}
           />
           Focus
+        </label>
+                <label
+          className="ri-switch"
+          title="Hide names of 1-2 characters (minified framework code). Real components with very short names are hidden too."
+        >
+          <input
+            type="checkbox"
+            checked={hideMinified}
+            onChange={(e) => setHideMinified(e.target.checked)}
+          />
+          Hide minified
         </label>
                 <button
           type="button"
