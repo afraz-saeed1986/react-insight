@@ -278,4 +278,15 @@ export const PANEL_CSS = `
 .ri-caret--empty {
   cursor: default;
 }
+.ri-crumbs {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--ri-border);
+  color: var(--ri-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
 `;

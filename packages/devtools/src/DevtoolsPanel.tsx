@@ -1,4 +1,5 @@
 import type { ComponentTreeNode } from "./buildComponentTree";
+import { focusComponentTree } from "./focusComponentTree";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInsight } from "@react-insight/react";
 import type { ComponentSnapshot, Insight } from "@react-insight/react";
@@ -48,6 +49,7 @@ function PanelBody({ onClose }: PanelBodyProps) {
     const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+    const [focusMode, setFocusMode] = useState(false);
 
   const handleToggle = useCallback((id: string) => {
     setCollapsedIds((prev) => {
@@ -127,6 +129,15 @@ function PanelBody({ onClose }: PanelBodyProps) {
     [components, includeUnmounted, query, minRenders],
   );
 
+    const focus = useMemo(
+    () =>
+      focusMode && selectedId !== null
+        ? focusComponentTree(tree, selectedId)
+        : undefined,
+    [focusMode, selectedId, tree],
+  );
+  const visibleTree = focus === undefined ? tree : [focus.node];
+
   // Inspection re-executes the component's render body (see
   // Insight.inspectHookNames), so it only ever runs on an explicit click.
   const handleSelect = (id: string) => {
@@ -181,6 +192,14 @@ function PanelBody({ onClose }: PanelBodyProps) {
           />
           Show unmounted
         </label>
+                <label className="ri-switch">
+          <input
+            type="checkbox"
+            checked={focusMode}
+            onChange={(e) => setFocusMode(e.target.checked)}
+          />
+          Focus
+        </label>
                 <button
           type="button"
           className="ri-btn"
@@ -218,9 +237,17 @@ function PanelBody({ onClose }: PanelBodyProps) {
       </div>
 
       <div className="ri-body">
-        <div className="ri-tree-pane">
+             <div className="ri-tree-pane">
+          {focus !== undefined && focus.ancestors.length > 0 && (
+            <div
+              className="ri-crumbs"
+              title={focus.ancestors.join(" › ")}
+            >
+              {focus.ancestors.join(" › ")}
+            </div>
+          )}
           <ComponentTreeView
-            nodes={tree}
+            nodes={visibleTree}
             selectedId={selectedId}
             onSelect={handleSelect}
             collapsedIds={collapsedIds}
