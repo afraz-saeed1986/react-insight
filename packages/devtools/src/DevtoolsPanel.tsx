@@ -42,7 +42,24 @@ function PanelBody({ onClose }: PanelBodyProps) {
   const [minRendersInput, setMinRendersInput] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspection, setInspection] = useState<ComponentInspection | null>(null);
-  const [inspectedAt, setInspectedAt] = useState<number | null>(null);
+
+    const [inspectedAt, setInspectedAt] = useState<number | null>(null);
+    const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  const handleToggle = useCallback((id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+  
 
   const refresh = useCallback(
     (force: boolean) => {
@@ -171,6 +188,8 @@ function PanelBody({ onClose }: PanelBodyProps) {
             nodes={tree}
             selectedId={selectedId}
             onSelect={handleSelect}
+            collapsedIds={collapsedIds}
+            onToggle={handleToggle}
           />
         </div>
         <div className="ri-details-pane">

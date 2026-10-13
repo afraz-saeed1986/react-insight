@@ -252,4 +252,30 @@ export const PANEL_CSS = `
   color: var(--ri-muted);
   font-size: 11px;
 }
+  .ri-line {
+  display: flex;
+  align-items: center;
+}
+.ri-line > .ri-row {
+  flex: 1;
+  min-width: 0;
+}
+.ri-caret {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ri-muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ri-caret:hover {
+  color: var(--ri-fg);
+}
+.ri-caret--empty {
+  cursor: default;
+}
 `;
