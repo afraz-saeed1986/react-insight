@@ -237,6 +237,15 @@ function createInstrumentedDispatcher(
     useDebugValue() {
       // Does not consume a hooks-list slot.
     },
+    useMemoCache(size: unknown) {
+      // Used by React Compiler output (`const $ = c(n)`). React keeps this
+      // cache on the fiber's updateQueue, not in the hooks list, so it does
+      // not consume a slot and is not recorded. The compiled code indexes
+      // into the returned array, so it must be an array of `size` entries
+      // (React fills it with this sentinel).
+      const length = typeof size === "number" && size > 0 ? size : 0;
+      return new Array<unknown>(length).fill(Symbol.for("react.memo_cache_sentinel"));
+    },
   };
 
     // Fallback hooks (useId, useTransition, ...) skip custom-hook-name

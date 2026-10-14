@@ -205,6 +205,49 @@ describe("resolveHookNames", () => {
     ]);
   });
 
+
+    // React Compiler output calls `useMemoCache(size)` (through `c(size)`) and
+  // expects a size-length array back. Same call path, without needing
+  // react/compiler-runtime types.
+  function useMemoCacheDirect(size: number): unknown[] {
+    const dispatcher = requireDispatcherRef().current as {
+      useMemoCache(size: number): unknown[];
+    };
+    return dispatcher.useMemoCache(size);
+  }
+
+  it("supports useMemoCache (React Compiler output) without consuming a hooks-list slot", () => {
+    function CompiledLikeComponent() {
+      const cache = useMemoCacheDirect(3);
+      const [count] = useState(0);
+      return <div>{cache.length + count}</div>;
+    }
+
+    const { container } = render(<CompiledLikeComponent />);
+    const fiber = findComponentFiber(container.firstChild!, CompiledLikeComponent);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useState" },
+    ]);
+  });
+
+  it("returns a sentinel-filled array of the requested size from useMemoCache", () => {
+    let captured: unknown[] | undefined;
+    function ProbeComponent() {
+      captured = useMemoCacheDirect(2);
+      return <div />;
+    }
+
+    const { container } = render(<ProbeComponent />);
+    const fiber = findComponentFiber(container.firstChild!, ProbeComponent);
+
+    captured = undefined;
+    resolveHookNames(fiber, requireDispatcherRef());
+
+    const sentinel = Symbol.for("react.memo_cache_sentinel");
+    expect(captured).toEqual([sentinel, sentinel]);
+  });
+
   it("does not mutate real hook state (safe to call repeatedly)", () => {
     function Counter() {
       useState(5);
