@@ -13,6 +13,10 @@ import { ComponentTreeView } from "./ComponentTreeView";
 import { excludeSubtrees } from "./excludeSubtrees";
 import { filterByMinRenders } from "./filterByMinRenders";
 import { filterComponentTree } from "./filterComponentTree";
+
+import { hideByName, parseNamePatterns } from "./hideByName";
+import { NEXTJS_INTERNAL_NAMES } from "./presets";
+
 import { PANEL_CSS } from "./styles";
 
 /**
@@ -52,6 +56,8 @@ function PanelBody({ onClose }: PanelBodyProps) {
   );
     const [focusMode, setFocusMode] = useState(false);
     const [hideMinified, setHideMinified] = useState(false);
+    const [hideNextjs, setHideNextjs] = useState(false);
+    const [hideNamesInput, setHideNamesInput] = useState("");
 
   const handleToggle = useCallback((id: string) => {
     setCollapsedIds((prev) => {
@@ -121,10 +127,23 @@ function PanelBody({ onClose }: PanelBodyProps) {
 
   const tree = useMemo(() => {
     const built = buildComponentTree(components, { includeUnmounted });
-    const visible = hideMinified ? hideMinifiedNames(built) : built;
+    const withoutMinified = hideMinified ? hideMinifiedNames(built) : built;
+    const patterns = [
+      ...(hideNextjs ? NEXTJS_INTERNAL_NAMES : []),
+      ...parseNamePatterns(hideNamesInput),
+    ];
+    const visible = hideByName(withoutMinified, patterns);
 
     return filterByMinRenders(filterComponentTree(visible, query), minRenders);
-  }, [components, includeUnmounted, hideMinified, query, minRenders]);
+  }, [
+    components,
+    includeUnmounted,
+    hideMinified,
+    hideNextjs,
+    hideNamesInput,
+    query,
+    minRenders,
+  ]);
 
     const focus = useMemo(
     () =>
@@ -208,6 +227,26 @@ function PanelBody({ onClose }: PanelBodyProps) {
           />
           Hide minified
         </label>
+                <label
+          className="ri-switch"
+          title="Hide components rendered by the Next.js App Router (names observed in Next 16 dev builds). Generic names like Root, Router, Head and ErrorBoundary are not included."
+        >
+          <input
+            type="checkbox"
+            checked={hideNextjs}
+            onChange={(e) => setHideNextjs(e.target.checked)}
+          />
+          Hide Next.js
+        </label>
+        <input
+          type="text"
+          className="ri-input ri-input--search"
+          placeholder="Hide names: Foo, Bar*"
+          aria-label="Hide component names"
+          title="Comma-separated component names to hide. * matches any characters. Case-sensitive."
+          value={hideNamesInput}
+          onChange={(e) => setHideNamesInput(e.target.value)}
+        />
                 <button
           type="button"
           className="ri-btn"
