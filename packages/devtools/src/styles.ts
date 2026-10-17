@@ -125,15 +125,15 @@ export const PANEL_CSS = `
   display: flex;
 }
 .ri-tree-pane {
-  width: 42%;
-  min-width: 220px;
+  flex: 1;
+  min-width: 300px;
   overflow: auto;
   padding: 6px;
   border-right: 1px solid var(--ri-border);
 }
 .ri-details-pane {
   flex: 1;
-  min-width: 0;
+  min-width: 320px;
   overflow: auto;
   padding: 10px 12px;
 }
@@ -288,5 +288,56 @@ export const PANEL_CSS = `
   text-overflow: ellipsis;
   direction: rtl;
   text-align: left;
+}
+  .ri-resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.ri-resize:hover,
+.ri-resize:active {
+  background: var(--ri-accent);
+  opacity: 0.5;
+}
+  .ri-splitter {
+  position: relative;
+  flex: none;
+  width: 6px;
+  margin: 0 -3px;
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.ri-splitter:hover,
+.ri-splitter:active {
+  background: var(--ri-accent);
+  opacity: 0.5;
+}
+  .ri-d-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.ri-d-head .ri-btn,
+.ri-status,
+.ri-stamp {
+  white-space: nowrap;
+}
+.ri-d-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+  .ri-meta {
+  white-space: nowrap;
+}
+  .ri-tree {
+  width: max-content;
+  min-width: 100%;
 }
 `;

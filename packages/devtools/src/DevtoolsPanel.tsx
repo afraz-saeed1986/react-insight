@@ -2,6 +2,7 @@ import { hideMinifiedNames } from "./hideMinifiedNames";
 import type { ComponentTreeNode } from "./buildComponentTree";
 import { focusComponentTree } from "./focusComponentTree";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useInsight } from "@react-insight/react";
 import type { ComponentSnapshot, Insight } from "@react-insight/react";
 import { inspectComponent } from "@react-insight/inspector";
@@ -27,6 +28,13 @@ import { PANEL_CSS } from "./styles";
  */
 const PANEL_DISPLAY_NAME = "ReactInsightDevtools";
 const REFRESH_THROTTLE_MS = 150;
+
+const DEFAULT_PANEL_HEIGHT = 340;
+const MIN_PANEL_HEIGHT = 160;
+const PANEL_TOP_MARGIN = 80;
+
+const MIN_DETAILS_WIDTH = 320;
+const MIN_TREE_WIDTH = 300;
 
 function readComponents(insight: Insight): ComponentSnapshot[] {
   return excludeSubtrees(
@@ -58,6 +66,43 @@ function PanelBody({ onClose }: PanelBodyProps) {
     const [hideMinified, setHideMinified] = useState(false);
     const [hideNextjs, setHideNextjs] = useState(false);
     const [hideNamesInput, setHideNamesInput] = useState("");
+
+      const [height, setHeight] = useState(DEFAULT_PANEL_HEIGHT);
+
+  // The panel is docked to the bottom, so its height is the distance from the
+  // pointer to the bottom of the viewport. Pointer capture keeps the drag
+  // alive outside the handle and releases itself on pointer up.
+  const handleResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleResizeMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+
+    const max = window.innerHeight - PANEL_TOP_MARGIN;
+    const next = window.innerHeight - event.clientY;
+
+    setHeight(Math.min(max, Math.max(MIN_PANEL_HEIGHT, next)));
+  };
+
+    const bodyRef = useRef<HTMLDivElement>(null);
+  // null keeps the default width from the stylesheet until the user drags.
+  const [detailsWidth, setDetailsWidth] = useState<number | null>(null);
+
+  // Width is measured from the right edge of the body, since the details
+  // pane is on the right. Reuses handleResizeStart for pointer capture.
+  const handleSplitMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+
+    const body = bodyRef.current;
+    if (body === null) return;
+
+    const rect = body.getBoundingClientRect();
+    const max = rect.width - MIN_TREE_WIDTH;
+    const next = rect.right - event.clientX;
+
+    setDetailsWidth(Math.min(max, Math.max(MIN_DETAILS_WIDTH, next)));
+  };
 
   const handleToggle = useCallback((id: string) => {
     setCollapsedIds((prev) => {
@@ -180,7 +225,13 @@ function PanelBody({ onClose }: PanelBodyProps) {
       : components.find((c) => c.id === selectedId);
 
   return (
-    <section className="ri-panel" aria-label="React Insight">
+    <section className="ri-panel" aria-label="React Insight" style={{ height }}>
+      <div
+        className="ri-resize"
+        title="Drag to resize"
+        onPointerDown={handleResizeStart}
+        onPointerMove={handleResizeMove}
+      />
       <div className="ri-header">
         <span className="ri-title">React Insight</span>
         <input
@@ -283,7 +334,7 @@ function PanelBody({ onClose }: PanelBodyProps) {
         </button>
       </div>
 
-      <div className="ri-body">
+            <div className="ri-body" ref={bodyRef}>
              <div className="ri-tree-pane">
           {focus !== undefined && focus.ancestors.length > 0 && (
             <div
@@ -301,7 +352,20 @@ function PanelBody({ onClose }: PanelBodyProps) {
             onToggle={handleToggle}
           />
         </div>
-        <div className="ri-details-pane">
+        <div
+          className="ri-splitter"
+          title="Drag to resize"
+          onPointerDown={handleResizeStart}
+          onPointerMove={handleSplitMove}
+        />
+        <div
+          className="ri-details-pane"
+          style={
+            detailsWidth === null
+              ? undefined
+              : { flex: "none", width: detailsWidth }
+          }
+        >
           {selectedId !== null ? (
             <ComponentDetails
               snapshot={selectedSnapshot}
