@@ -51,7 +51,20 @@ createRoot(document.getElementById("root")!).render(
 
 `createInsight()` must be called before the first render so the first commit is observed.
 
-If a production build shows no components, check `window.__REACT_DEVTOOLS_GLOBAL_HOOK__.renderers.size` in the browser console: `0` means React loaded before the hook was installed. This check only applies to production builds: a dev server with Fast Refresh (for example `@vitejs/plugin-react`) installs its own hook first, so `renderers.size` is always `0` there and tells you nothing.
+### Next.js
+
+In Next.js you do not control module evaluation order, so the separate-module approach above is not enough: it worked in `next dev`, but a production build showed an empty tree. Install the hook in `src/instrumentation-client.ts`, which Next runs before hydration:
+
+```ts
+// src/instrumentation-client.ts
+import { installReactDevtoolsHook } from "@react-insight/react";
+
+installReactDevtoolsHook();
+```
+
+Then create the `Insight` instance and render `InsightProvider` in a client component, as above. Verified with Next.js 16 (App Router, React Compiler enabled) in `next dev` and in `next build` + `next start`.
+
+If a production build shows no components, check `window.__REACT_DEVTOOLS_GLOBAL_HOOK__.renderers.size` in the browser console: `0` means React loaded before the hook was installed. This check only applies to production builds. In dev servers it is not reliable: with Fast Refresh (for example `@vitejs/plugin-react`) another hook is installed first, so the value is always `0`, and `0` was also observed in `next dev` while components were discovered normally.
 
 ## API
 
@@ -75,6 +88,9 @@ A `ComponentSnapshot` has `id`, `displayName`, `parentId`, `status`, `renderCoun
 
 - **`inspectHookNames()` re-executes the component's render body** with an instrumented dispatcher. Call it only in response to an explicit user action, never automatically. It supports function components, `memo`, `forwardRef` and `memo(forwardRef(...))`; not class components. It also works in production React builds, but custom hook names degrade in minified builds.
 - A re-mounted component is a new instance with a new `id`; the old record stays as `unmounted`.
+- React Compiler output is supported: hook names resolve for compiled components (verified in a Next.js 16 app).
+- Multi-slot React 19 hooks (`useTransition`, `useActionState`, `useSyncExternalStore`, `useOptimistic`) are resolved with slot layouts that mirror React's internal implementation, so they may need updating when React changes.
+- Component names can be minified or lost in production bundles. Set `Component.displayName` to keep them readable.
 - `useContext` does not take a hook slot, so it appears under `contexts`, never under `hooks`.
 - One `react-dom` renderer and one React application per page are assumed.
 

@@ -25,7 +25,7 @@ DevTools panel built on that API.
 - Structural hook tracking with value previews, and context tracking
 - On-demand exact hook names (`useState` vs `useReducer`, one level of custom hook name)
 - A reactive public API: `getComponents()`, `getComponent(id)`, `onChange()`
-- A drop-in `<DevtoolsPanel />`: tree, render flash, filters, hook and context details
+- A drop-in `<DevtoolsPanel />`: resizable panel with a collapsible tree, render flash, filters (name, minimum renders, focus on a subtree, hide minified or named components, hide Next.js internals), hook and context details
 - A plugin-based, framework-agnostic runtime underneath (`@react-insight/core`)
 
 ## Packages
@@ -81,6 +81,8 @@ createRoot(document.getElementById("root")!).render(
 );
 ```
 
+Using Next.js? Install the hook in `src/instrumentation-client.ts` instead; a separate module is not enough in a production build. See the [`@react-insight/react` README](packages/react) for details.
+
 See each package's README for its full API and caveats.
 
 ## Try it locally
@@ -116,7 +118,8 @@ Engineering documentation (architecture, decisions, roadmap) lives in
 
 - Tree sibling order follows discovery order, not always React's child order (visible after a re-mount).
 - One `react-dom` renderer and one React application per page are assumed.
-- Exact hook names need a development React build; custom hook names degrade when minified.
+- Hook names resolve in production React builds too, but custom hook names degrade when minified. Component names can also be minified or lost in production bundles; set `Component.displayName` to keep them readable.
+- Multi-slot React 19 hooks (`useTransition`, `useActionState`, `useSyncExternalStore`, `useOptimistic`) are resolved with slot layouts that mirror React's internal implementation, so they may need updating when React changes.
 - Class components are discovered, but their hook names cannot be resolved.
 
 ## License

@@ -28,6 +28,7 @@ every package; its date is set when it is published.
 - Structural hook tracking with bounded value previews, and context tracking
 - Public read API: `getComponents()`, `getComponent(id)`, `onChange()`
 - `Insight.inspectHookNames(id)`: on-demand exact hook names and one level of custom hook name
+- Hook name resolution covers React 19 hooks (`useTransition`, `useOptimistic`, `useActionState`, `useSyncExternalStore`, `use`) and React Compiler output (`useMemoCache`)
 
 #### `@react-insight/inspector`
 
@@ -35,7 +36,8 @@ every package; its date is set when it is published.
 
 #### `@react-insight/devtools`
 
-- `DevtoolsPanel`: component tree, unmounted-component toggle, render flash, name filter, minimum-renders filter, per-row hook and context summary, detail pane with on-demand inspection
+- `DevtoolsPanel`: docked bottom panel with a floating toggle (closed by default), resizable height and tree/details split, component tree with expand/collapse, unmounted-component toggle, render flash, per-row hook and context summary, detail pane with on-demand inspection
+- Tree filters: name, minimum renders, Focus on a subtree (with an ancestor breadcrumb), Hide minified names, Hide names by pattern, and a Hide Next.js preset
 
 #### Tooling and quality
 
