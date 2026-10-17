@@ -1,12 +1,20 @@
 import {
   Component,
+  createContext,
   forwardRef,
   memo,
+  use,
+  useActionState,
   useCallback,
+  useDeferredValue,
   useId,
+  useImperativeHandle,
   useMemo,
+  useOptimistic,
   useReducer,
   useState,
+  useSyncExternalStore,
+  useTransition,
 } from "react";
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -246,6 +254,129 @@ describe("resolveHookNames", () => {
 
     const sentinel = Symbol.for("react.memo_cache_sentinel");
     expect(captured).toEqual([sentinel, sentinel]);
+  });
+
+    it("keeps names aligned for useDeferredValue", () => {
+    function DeferredComponent() {
+      useDeferredValue("x");
+      useState("marker");
+      return <div />;
+    }
+
+    const { container } = render(<DeferredComponent />);
+    const fiber = findComponentFiber(container.firstChild!, DeferredComponent);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useDeferredValue" },
+      { index: 1, hookName: "useState" },
+    ]);
+  });
+
+  it("keeps names aligned for useImperativeHandle", () => {
+    function ImperativeComponent() {
+      useImperativeHandle(undefined, () => ({}), []);
+      useState("marker");
+      return <div />;
+    }
+
+    const { container } = render(<ImperativeComponent />);
+    const fiber = findComponentFiber(container.firstChild!, ImperativeComponent);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useImperativeHandle" },
+      { index: 1, hookName: "useState" },
+    ]);
+  });
+
+  it("maps a two-slot useTransition to two entries, then the next hook", () => {
+    function TransitionComponent() {
+      const [isPending] = useTransition();
+      useState("marker");
+      return <div>{String(isPending)}</div>;
+    }
+
+    const { container } = render(<TransitionComponent />);
+    const fiber = findComponentFiber(container.firstChild!, TransitionComponent);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useTransition" },
+      { index: 1, hookName: "useTransition" },
+      { index: 2, hookName: "useState" },
+    ]);
+  });
+
+  it("maps a two-slot useSyncExternalStore to two entries, then the next hook", () => {
+    const subscribe = () => () => {};
+    const getSnapshot = () => 7;
+
+    function StoreComponent() {
+      const value = useSyncExternalStore(subscribe, getSnapshot);
+      useState("marker");
+      return <div>{value}</div>;
+    }
+
+    const { container } = render(<StoreComponent />);
+    const fiber = findComponentFiber(container.firstChild!, StoreComponent);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useSyncExternalStore" },
+      { index: 1, hookName: "useSyncExternalStore" },
+      { index: 2, hookName: "useState" },
+    ]);
+  });
+
+  it("supports useOptimistic, which returns a tuple from one slot", () => {
+    function OptimisticComponent() {
+      const [value] = useOptimistic(1);
+      useState("marker");
+      return <div>{value}</div>;
+    }
+
+    const { container } = render(<OptimisticComponent />);
+    const fiber = findComponentFiber(container.firstChild!, OptimisticComponent);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useOptimistic" },
+      { index: 1, hookName: "useState" },
+    ]);
+  });
+
+  it("maps a three-slot useActionState to three entries, then the next hook", () => {
+    function ActionStateComponent() {
+      const [state] = useActionState(async (previous: number) => previous + 1, 0);
+      useState("marker");
+      return <div>{state}</div>;
+    }
+
+    const { container } = render(<ActionStateComponent />);
+    const fiber = findComponentFiber(container.firstChild!, ActionStateComponent);
+
+    expect(resolveHookNames(fiber, requireDispatcherRef())).toEqual([
+      { index: 0, hookName: "useActionState" },
+      { index: 1, hookName: "useActionState" },
+      { index: 2, hookName: "useActionState" },
+      { index: 3, hookName: "useState" },
+    ]);
+  });
+
+  it("does not give use(Context) a hooks-list slot and returns the context value", () => {
+    const ThemeContext = createContext("light");
+    let theme: string | undefined;
+
+    function UseComponent() {
+      theme = use(ThemeContext);
+      useState("marker");
+      return <div>{theme}</div>;
+    }
+
+    const { container } = render(<UseComponent />);
+    const fiber = findComponentFiber(container.firstChild!, UseComponent);
+
+    theme = undefined;
+    const names = resolveHookNames(fiber, requireDispatcherRef());
+
+    expect(names).toEqual([{ index: 0, hookName: "useState" }]);
+    expect(theme).toBe("light");
   });
 
   it("does not mutate real hook state (safe to call repeatedly)", () => {

@@ -94,6 +94,7 @@ const INTERNAL_FRAME_NAMES = new Set([
   "useEffect", "useLayoutEffect", "useInsertionEffect", "useContext",
   "useDebugValue", "useId", "useTransition", "useDeferredValue",
   "useSyncExternalStore", "useImperativeHandle",
+  "useOptimistic", "useActionState",
 ]);
 
 /**
@@ -184,7 +185,7 @@ function resolveCustomHookName(
  * documented trade-off rather than a silent gap.
  */
 function createInstrumentedDispatcher(
-  recordCall: (hookName: string, resolveCustomName?: boolean) => void,
+  recordCall: (hookName: string, resolveCustomName?: boolean, slots?: number) => void,
   nextNode: () => HookNode | null,
 ): Record<string, (...args: unknown[]) => unknown> {
   const explicit: Record<string, (...args: unknown[]) => unknown> = {
@@ -246,6 +247,55 @@ function createInstrumentedDispatcher(
       const length = typeof size === "number" && size > 0 ? size : 0;
       return new Array<unknown>(length).fill(Symbol.for("react.memo_cache_sentinel"));
     },
+    // The hooks below occupy a different number of hooks-list slots than
+    // calls, or return tuples the generic fallback cannot produce. Slot
+    // layouts mirror React 19's mount implementation (internal, may change).
+    useTransition() {
+      // Two slots: the isPending state, then the start function.
+      recordCall("useTransition", true, 2);
+      const pending = nextNode();
+      nextNode();
+      return [Boolean(pending?.memoizedState), noop];
+    },
+    useOptimistic(passthrough: unknown) {
+      recordCall("useOptimistic");
+      const node = nextNode();
+      return [node ? node.memoizedState : passthrough, noop];
+    },
+    useActionState(...args: unknown[]) {
+      // Three slots: state, pending flag, action. args = [action, initialState].
+      recordCall("useActionState", true, 3);
+      const stateNode = nextNode();
+      const pendingNode = nextNode();
+      nextNode();
+      return [
+        stateNode ? stateNode.memoizedState : args[1],
+        noop,
+        Boolean(pendingNode?.memoizedState),
+      ];
+    },
+    useSyncExternalStore(...args: unknown[]) {
+      // Two slots: the snapshot, then the subscription effect.
+      // args = [subscribe, getSnapshot].
+      recordCall("useSyncExternalStore", true, 2);
+      const snapshotNode = nextNode();
+      nextNode();
+      return snapshotNode ? snapshotNode.memoizedState : (args[1] as () => unknown)();
+    },
+    use(usable: unknown) {
+      // Takes no hooks-list slot (like useContext), so nothing is recorded.
+      // Contexts and already-settled thenables can be read synchronously; an
+      // unsettled thenable cannot be resolved here, which aborts the
+      // inspection (resolveHookNames then returns undefined).
+      if (usable !== null && typeof usable === "object") {
+        if ("_currentValue" in usable) {
+          return (usable as { _currentValue: unknown })._currentValue;
+        }
+        const thenable = usable as { status?: unknown; value?: unknown };
+        if (thenable.status === "fulfilled") return thenable.value;
+      }
+      throw new Error("use(): cannot resolve an unsettled thenable during inspection");
+    },
   };
 
     // Fallback hooks (useId, useTransition, ...) skip custom-hook-name
@@ -302,16 +352,21 @@ export function resolveHookNames(
     return node;
   }
 
-  function recordCall(hookName: string, resolveCustomName = true): void {
+  // `slots` is how many hooks-list slots this call occupies (most hooks: 1).
+  // One entry is recorded per slot, so `index` always equals the slot index
+  // and stays aligned with hookInspector.ts's structural list.
+  function recordCall(hookName: string, resolveCustomName = true, slots = 1): void {
     const customHookName = resolveCustomName
       ? resolveCustomHookName(new Error().stack, componentFunctionName)
       : undefined;
-    calls.push(
-      customHookName
-        ? { index: hookIndex, hookName, customHookName }
-        : { index: hookIndex, hookName },
-    );
-    hookIndex += 1;
+    for (let i = 0; i < slots; i += 1) {
+      calls.push(
+        customHookName
+          ? { index: hookIndex, hookName, customHookName }
+          : { index: hookIndex, hookName },
+      );
+      hookIndex += 1;
+    }
   }
 
   const dispatcher = createInstrumentedDispatcher(recordCall, nextNode);
