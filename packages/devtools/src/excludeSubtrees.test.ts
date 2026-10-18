@@ -15,6 +15,7 @@ function snap(id: string, parentId: string | null): ComponentSnapshot {
     unmountedAt: null,
     hooks: [],
     contexts: [],
+    lastRenderReasons: [{ type: "mount" }],
   };
 }
 

@@ -20,6 +20,7 @@ function snap(
     unmountedAt: null,
     hooks: [],
     contexts: [],
+    lastRenderReasons: [{ type: "mount" }],
   };
 }
 

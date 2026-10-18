@@ -21,6 +21,7 @@ function createComponent(id: string): ComponentNode {
     renderCount: 1,
     lastRenderedAt: Date.now(),
     hooks: [],
+    lastRenderReasons: [{ type: "mount" }],
      contexts: [],
   };
 }
@@ -337,6 +338,89 @@ it("increments renderCount only when rendered is true", () => {
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(registry.get("app")?.parentId).toBe("some-parent");
+  });
+
+  it("records a mount reason on first sync", () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+
+    expect(registry.get("app")?.lastRenderReasons).toEqual([{ type: "mount" }]);
+  });
+
+  it("records changed props as the reason for a re-render", () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+
+    registry.sync({
+      id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true,
+      changedPropKeys: ["label"], hooks: [], contexts: [],
+    });
+
+    expect(registry.get("app")?.lastRenderReasons).toEqual([{ type: "props", keys: ["label"] }]);
+  });
+
+  it("records a changed state hook as the reason for a re-render", () => {
+    const registry = new ComponentRegistry();
+    registry.sync({
+      id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true,
+      hooks: [{ index: 0, kind: "state", value: 0 }], contexts: [],
+    });
+
+    registry.sync({
+      id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true,
+      hooks: [{ index: 0, kind: "state", value: 1 }], contexts: [],
+    });
+
+    expect(registry.get("app")?.lastRenderReasons).toEqual([{ type: "state", hookIndices: [0] }]);
+  });
+
+  it("records a changed context as the reason for a re-render", () => {
+    const registry = new ComponentRegistry();
+    registry.sync({
+      id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true,
+      hooks: [], contexts: [{ index: 0, displayName: "Theme", value: "light" }],
+    });
+
+    registry.sync({
+      id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true,
+      hooks: [], contexts: [{ index: 0, displayName: "Theme", value: "dark" }],
+    });
+
+    expect(registry.get("app")?.lastRenderReasons).toEqual([{ type: "context", names: ["Theme"] }]);
+  });
+
+  it("records parent when only the parent rendered", () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+
+    registry.sync({
+      id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true,
+      parentRendered: true, hooks: [], contexts: [],
+    });
+
+    expect(registry.get("app")?.lastRenderReasons).toEqual([{ type: "parent" }]);
+  });
+
+  it("records unknown when nothing detectable changed", () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+
+    expect(registry.get("app")?.lastRenderReasons).toEqual([{ type: "unknown" }]);
+  });
+
+  it("keeps the previous reasons when a sync reports no render", () => {
+    const registry = new ComponentRegistry();
+    registry.sync({ id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true, hooks: [], contexts: [] });
+    registry.sync({
+      id: "app", rootId: "root-1", displayName: "App", parentId: null, rendered: true,
+      changedPropKeys: ["label"], hooks: [], contexts: [],
+    });
+
+    registry.sync({ id: "app", rootId: "root-1", displayName: "AppRenamed", parentId: null, rendered: false, hooks: [], contexts: [] });
+
+    expect(registry.get("app")?.lastRenderReasons).toEqual([{ type: "props", keys: ["label"] }]);
   });
 
   it("has() reports whether a component is currently tracked", () => {

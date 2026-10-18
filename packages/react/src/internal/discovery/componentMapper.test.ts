@@ -25,6 +25,8 @@ describe("mapDiscoveredComponent", () => {
       rendered: true,
       hooks: [],
       contexts: [],
+      changedPropKeys: [],
+      parentRendered: false,
     });
   });
 

@@ -15,6 +15,7 @@ function fakeSnapshot(overrides: Partial<ComponentSnapshot> = {}): ComponentSnap
     unmountedAt: null,
     hooks: [],
     contexts: [],
+    lastRenderReasons: [{ type: "mount" }],
     ...overrides,
   };
 }

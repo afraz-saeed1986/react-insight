@@ -1,9 +1,24 @@
 import type { ComponentId, ComponentNode } from "./component";
+import { computeRenderReasons, type RenderReason } from "./discovery/renderReasons";
+
+const NO_PROP_KEYS: readonly string[] = [];
+const MOUNT_REASONS: readonly RenderReason[] = [{ type: "mount" }];
 export type ComponentSyncInput = Pick<
   ComponentNode,
   "id" | "rootId" | "displayName" | "parentId"
 > & {
   readonly rendered: boolean;
+  /**
+   * Names of props whose identity changed since the previous visit.
+   * Omitted means none are known (first sight, no change, or a caller
+   * that does not track props).
+   */
+  readonly changedPropKeys?: readonly string[];
+  /**
+   * Whether the nearest component ancestor rendered in the same commit.
+   * Omitted means false.
+   */
+  readonly parentRendered?: boolean;
 } & Pick<ComponentNode, "hooks" | "contexts">;
 
 
@@ -81,7 +96,7 @@ export class ComponentRegistry {
    * is the sole owner of lifecycle state (Principle 8, Domain Ownership).
    */
 sync(input: ComponentSyncInput): void {
-    const { rendered, ...structural } = input;
+    const { rendered, changedPropKeys, parentRendered, ...structural } = input;
     const existing = this.components.get(input.id);
 
 if (existing) {
@@ -105,6 +120,17 @@ if (existing) {
         contexts: structural.contexts,
         renderCount: rendered ? existing.renderCount + 1 : existing.renderCount,
         lastRenderedAt: rendered ? Date.now() : existing.lastRenderedAt,
+        lastRenderReasons: rendered
+          ? computeRenderReasons({
+              isMount: false,
+              changedPropKeys: changedPropKeys ?? NO_PROP_KEYS,
+              previousHooks: existing.hooks,
+              hooks: structural.hooks,
+              previousContexts: existing.contexts,
+              contexts: structural.contexts,
+              parentRendered: parentRendered ?? false,
+            })
+          : existing.lastRenderReasons,
       });
       this.scheduleNotify();
       return;
@@ -116,6 +142,7 @@ if (existing) {
       mountedAt: Date.now(),
       unmountedAt: null,
       renderCount: 1,
+      lastRenderReasons: MOUNT_REASONS,
       lastRenderedAt: Date.now(),
     });
     this.scheduleNotify();

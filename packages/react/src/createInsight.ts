@@ -26,6 +26,7 @@ function toSnapshot(component: ComponentNode): ComponentSnapshot {
     mountedAt: component.mountedAt,
     lastRenderedAt: component.lastRenderedAt,
     unmountedAt: component.unmountedAt,
+    lastRenderReasons: component.lastRenderReasons,
     hooks: component.hooks,
     contexts: component.contexts,
   };

@@ -1,5 +1,6 @@
 import type { ContextSummary } from "./discovery/contextInspector";
 import type { HookSummary } from "./discovery/hookInspector";
+import type { RenderReason } from "./discovery/renderReasons";
 
 export type ComponentId = string;
 
@@ -68,4 +69,10 @@ export interface ComponentNode {
    * Updated unconditionally on every sync(), like hooks/displayName.
    */
   contexts: readonly ContextSummary[];
+
+  /**
+   * Why the component rendered in its most recent render. Replaced on
+   * every render; no history is kept.
+   */
+  lastRenderReasons: readonly RenderReason[];
 }

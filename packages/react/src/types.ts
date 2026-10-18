@@ -1,5 +1,9 @@
 import type { InsightPlugin } from "@react-insight/core";
 
+import type { RenderReason } from "./internal/discovery/renderReasons";
+
+export type { RenderReason };
+
 /**
  * Public, read-only snapshot of a discovered component.
  *
@@ -15,6 +19,23 @@ export interface ComponentSnapshot {
   readonly mountedAt: number;
   readonly lastRenderedAt: number | null;
   readonly unmountedAt: number | null;
+
+  /**
+   * Why this component rendered in its most recent render, derived by
+   * comparing what was observed at the previous visit with what is
+   * observed now. Never empty; several reasons can apply at once:
+   *
+   * - `mount`: the first render.
+   * - `props`: names of props whose identity changed (never values).
+   *   `children` changes on most parent renders.
+   * - `state`: indices into `hooks` of state hooks whose previewed value
+   *   changed. A new value that looks equal is not detected.
+   * - `context`: names of contexts whose value changed.
+   * - `parent`: nothing above changed, but the parent rendered in the
+   *   same commit (often an avoidable render).
+   * - `unknown`: no cause could be detected.
+   */
+  readonly lastRenderReasons: ReadonlyArray<RenderReason>;
 
   /**
    * Structural summary of this component's hooks (count, order,

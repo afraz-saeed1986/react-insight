@@ -20,5 +20,7 @@ export function mapDiscoveredComponent(
     rendered: discovered.rendered,
     hooks: discovered.hooks,
     contexts: discovered.contexts,
+    changedPropKeys: discovered.changedPropKeys,
+    parentRendered: discovered.parentRendered,
   };
 }

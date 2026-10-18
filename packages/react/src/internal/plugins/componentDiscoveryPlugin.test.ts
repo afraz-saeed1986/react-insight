@@ -182,6 +182,31 @@ it("syncs discovered components into the registry on commit", async () => {
   });
 
   
+    it("records why a component re-rendered in lastRenderReasons", async () => {
+    const rootRegistry = new RootRegistry();
+    const componentRegistry = new ComponentRegistry();
+    rootRegistry.register(createInternalRoot());
+
+    const plugin = createComponentDiscoveryPlugin({ rootRegistry, componentRegistry });
+    await plugin.setup({ emit() {}, on: () => () => {} });
+
+    const hook = getInstalledHook();
+
+    const mountFiber = createFiber("App");
+    Object.assign(mountFiber, { memoizedProps: { a: 1 } });
+    hook.onCommitFiberRoot?.(1, { current: mountFiber });
+
+    expect(getOnlyComponent(componentRegistry).lastRenderReasons).toEqual([{ type: "mount" }]);
+
+    const updateFiber = createFiber("App");
+    Object.assign(updateFiber, { alternate: mountFiber, memoizedProps: { a: 2 } });
+    hook.onCommitFiberRoot?.(1, { current: updateFiber });
+
+    expect(getOnlyComponent(componentRegistry).lastRenderReasons).toEqual([
+      { type: "props", keys: ["a"] },
+    ]);
+  });
+
   it("forgets the observed values of a component on unmount", async () => {
     const rootRegistry = new RootRegistry();
     const componentRegistry = new ComponentRegistry();
