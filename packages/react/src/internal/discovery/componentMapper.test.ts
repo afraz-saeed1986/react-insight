@@ -13,6 +13,8 @@ describe("mapDiscoveredComponent", () => {
       rendered: true,
       hooks: [],
       contexts: [],
+      changedPropKeys: [],
+      parentRendered: false,
     };
 
  expect(mapDiscoveredComponent(discovered)).toEqual({
@@ -35,6 +37,8 @@ describe("mapDiscoveredComponent", () => {
       rendered: false,
       hooks: [],
       contexts: [],
+      changedPropKeys: [],
+      parentRendered: false,
     };
 
     expect(mapDiscoveredComponent(discovered).rendered).toBe(false);

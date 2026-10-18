@@ -25,6 +25,20 @@ export interface DiscoveredComponent {
   readonly rendered: boolean;
 
   /**
+   * Names of props whose value identity changed since this component
+   * was last visited. Empty on first sight, for a component that did
+   * not render, and when the props object is the same reference. Names
+   * only: no prop value is retained.
+   */
+  readonly changedPropKeys: readonly string[];
+
+  /**
+   * Whether the nearest component ancestor rendered in this same
+   * commit. False for the topmost component.
+   */
+  readonly parentRendered: boolean;
+
+  /**
    * Structural summary of this component's hooks (count, order, best-
    * effort kind classification). See hookInspector.ts for what this
    * can and cannot distinguish. Empty for class components.

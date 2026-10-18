@@ -3,6 +3,7 @@ import { REACT_FORWARD_REF_TYPE, REACT_MEMO_TYPE } from "./fiberAdapter";
 import type { DiscoveredComponent } from "./discoveredComponent";
 import { inspectHooks } from "./hookInspector";
 import { inspectContexts, readContextValues } from "./contextInspector";
+import { diffPropKeys } from "./renderReasons";
 import { setFiberHandle } from "./fiberHandleRegistry";
 
 const fiberIds = new WeakMap<FiberNode, string>();
@@ -25,9 +26,13 @@ function sameContextValues(a: readonly unknown[], b: readonly unknown[]): boolea
   return true;
 }
 
+const NO_PROP_KEYS: readonly string[] = [];
+
 interface FiberIdentity {
   id: string;
   rendered: boolean;
+  /** Names of props that changed since the previous visit (see diffPropKeys). */
+  changedPropKeys: readonly string[];
 }
 
 /**
@@ -77,7 +82,13 @@ function resolveFiberIdentity(fiber: FiberNode): FiberIdentity {
       contexts,
     });
 
-    return { id: existingId, rendered };
+    // Only a component that really rendered has a reason to explain.
+    // Identical props (same reference) return early inside diffPropKeys,
+    // before anything is allocated.
+    const changedPropKeys =
+      rendered && previous ? diffPropKeys(previous.props, fiber.memoizedProps) : NO_PROP_KEYS;
+
+    return { id: existingId, rendered, changedPropKeys };
   }
 
   const id = `fiber-${++nextFiberId}`;
@@ -87,7 +98,7 @@ function resolveFiberIdentity(fiber: FiberNode): FiberIdentity {
     state: fiber.memoizedState,
     contexts: readContextValues(fiber),
   });
-  return { id, rendered: true };
+  return { id, rendered: true, changedPropKeys: NO_PROP_KEYS };
 }
 
 /**
@@ -173,15 +184,24 @@ export function traverse(
 ): DiscoveredComponent[] {
   const result: DiscoveredComponent[] = [];
 
-  function visit(fiber: FiberNode | null, parentId: string | null): void {
+  // parentRendered travels down the recursion as an argument: the
+  // nearest component ancestor is always visited before its
+  // descendants, so no per-commit lookup structure is needed.
+  function visit(
+    fiber: FiberNode | null,
+    parentId: string | null,
+    parentRendered: boolean,
+  ): void {
     if (!fiber) return;
 
     const isComponent = isComponentFiber(fiber);
     let nextParentId = parentId;
+    let nextParentRendered = parentRendered;
 
- if (isComponent) {
-      const { id, rendered } = resolveFiberIdentity(fiber);
+    if (isComponent) {
+      const { id, rendered, changedPropKeys } = resolveFiberIdentity(fiber);
       nextParentId = id;
+      nextParentRendered = rendered;
       setFiberHandle(id, fiber);
 
       result.push({
@@ -190,16 +210,18 @@ export function traverse(
         displayName: getDisplayName(fiber),
         parentId,
         rendered,
+        changedPropKeys,
+        parentRendered,
         hooks: inspectHooks(fiber),
         contexts: inspectContexts(fiber),
       });
     }
 
-    visit(fiber.child, nextParentId);
-    visit(fiber.sibling, parentId);
+    visit(fiber.child, nextParentId, nextParentRendered);
+    visit(fiber.sibling, parentId, parentRendered);
   }
 
-  visit(entry, null);
+  visit(entry, null, false);
 
   return result;
 }

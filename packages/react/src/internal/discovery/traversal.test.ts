@@ -268,6 +268,80 @@ it("marks an updated fiber as rendered when its props or state actually changed"
     expect(traverse(appFiber, "root-1")[0]!.rendered).toBe(true);
   });
 
+  it("lists the props that changed on an update", () => {
+    const mountFiber = fiber(App, null, null, null, { a: 1, b: 1 });
+    traverse(mountFiber, "root-1");
+
+    const updateFiber = fiber(App, null, null, mountFiber, { a: 1, b: 2 });
+    const [app] = traverse(updateFiber, "root-1");
+
+    expect(app!.rendered).toBe(true);
+    expect(app!.changedPropKeys).toEqual(["b"]);
+  });
+
+  it("reports no changed props on first sight", () => {
+    const [app] = traverse(fiber(App, null, null, null, { a: 1 }), "root-1");
+
+    expect(app!.changedPropKeys).toEqual([]);
+  });
+
+  it("reports no changed props when only state changed (same props object)", () => {
+    const props = { a: 1 };
+    const mountFiber = fiber(App, null, null, null, props, { s: 0 });
+    traverse(mountFiber, "root-1");
+
+    const updateFiber = fiber(App, null, null, mountFiber, props, { s: 1 });
+    const [app] = traverse(updateFiber, "root-1");
+
+    expect(app!.rendered).toBe(true);
+    expect(app!.changedPropKeys).toEqual([]);
+  });
+
+  it("reports no changed props for a component that bailed out", () => {
+    const props = { a: 1 };
+    const appFiber = fiber(App, null, null, null, props);
+    traverse(appFiber, "root-1");
+
+    const [app] = traverse(appFiber, "root-1");
+
+    expect(app!.rendered).toBe(false);
+    expect(app!.changedPropKeys).toEqual([]);
+  });
+
+  it("marks parentRendered for a child whose parent rendered in the same commit", () => {
+    const headerMount = fiber(Header, null, null, null, { x: 1 });
+    const appMount = fiber(App, headerMount, null, null, { n: 1 });
+    traverse(appMount, "root-1");
+
+    // Header gets a new props object with equal contents, as happens
+    // when its parent re-renders.
+    const headerUpdate = fiber(Header, null, null, headerMount, { x: 1 });
+    const appUpdate = fiber(App, headerUpdate, null, appMount, { n: 2 });
+    const [app, header] = traverse(appUpdate, "root-1");
+
+    expect(app!.parentRendered).toBe(false);
+    expect(app!.changedPropKeys).toEqual(["n"]);
+    expect(header!.rendered).toBe(true);
+    expect(header!.changedPropKeys).toEqual([]);
+    expect(header!.parentRendered).toBe(true);
+  });
+
+  it("does not mark parentRendered when the parent bailed out and only a context changed", () => {
+    const appProps = { n: 1 };
+    const headerProps = { x: 1 };
+    const headerMount = fiber(Header, null, null, null, headerProps, null, contextDependencies("a"));
+    const appMount = fiber(App, headerMount, null, null, appProps);
+    traverse(appMount, "root-1");
+
+    const headerUpdate = fiber(Header, null, null, headerMount, headerProps, null, contextDependencies("b"));
+    const appUpdate = fiber(App, headerUpdate, null, appMount, appProps);
+    const [app, header] = traverse(appUpdate, "root-1");
+
+    expect(app!.rendered).toBe(false);
+    expect(header!.rendered).toBe(true);
+    expect(header!.parentRendered).toBe(false);
+  });
+
   it("records a fiber handle for every discovered component", () => {
     const appFiber = fiber(App);
 
