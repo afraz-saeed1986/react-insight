@@ -2,6 +2,7 @@ import type { ComponentSnapshot } from "@react-insight/react";
 import type { ComponentInspection } from "@react-insight/inspector";
 
 import { mergeHookInfo } from "./mergeHookInfo";
+import { describeRenderReasons } from "./describeRenderReasons";
 
 interface ComponentDetailsProps {
   /** Live snapshot of the selected component (undefined if no longer tracked). */
@@ -44,6 +45,12 @@ export function ComponentDetails({
   const namesUnavailable =
     inspection !== null && inspection.hookNames === undefined;
 
+  const hookLabel = (index: number): string => {
+    const row = rows.find((candidate) => candidate.index === index);
+    return row ? `#${index} ${row.hookName ?? row.kind}` : `#${index}`;
+  };
+  const reasonLines = describeRenderReasons(snapshot.lastRenderReasons, hookLabel);
+
   return (
     <div>
       <div className="ri-d-head">
@@ -81,6 +88,15 @@ export function ComponentDetails({
         <dt>unmounted</dt>
         <dd>{formatTime(snapshot.unmountedAt)}</dd>
       </dl>
+
+      <h4 className="ri-section">Why it rendered</h4>
+      <ul className="ri-list">
+        {reasonLines.map((line) => (
+          <li key={line} className="ri-item">
+            <span className="ri-item-name">{line}</span>
+          </li>
+        ))}
+      </ul>
 
       <h4 className="ri-section">Hooks</h4>
       {namesUnavailable && (
