@@ -65,3 +65,34 @@ export function inspectContexts(fiber: FiberNode): ContextSummary[] {
 
   return summaries;
 }
+
+
+const NO_CONTEXT_VALUES: readonly unknown[] = [];
+
+/**
+ * Raw (unpreviewed) `memoizedValue` of every context dependency of a
+ * fiber, in dependency-list order. Used by traversal.ts to detect a
+ * context-driven re-render of a component that has no hooks and
+ * unchanged props, which neither memoizedProps nor memoizedState can
+ * reveal.
+ *
+ * Returns a shared empty array when the fiber reads no context, so the
+ * common case allocates nothing on this per-commit hot path.
+ */
+export function readContextValues(fiber: FiberNode): readonly unknown[] {
+  const dependencies = fiber.dependencies as { firstContext: ContextDependencyNode | null } | null;
+
+  if (!dependencies || !dependencies.firstContext) {
+    return NO_CONTEXT_VALUES;
+  }
+
+  const values: unknown[] = [];
+  let node: ContextDependencyNode | null = dependencies.firstContext;
+
+  while (node) {
+    values.push(node.memoizedValue);
+    node = node.next;
+  }
+
+  return values;
+}

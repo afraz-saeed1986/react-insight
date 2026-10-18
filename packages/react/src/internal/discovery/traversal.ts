@@ -2,12 +2,28 @@ import type { FiberNode } from "./fiberAdapter";
 import { REACT_FORWARD_REF_TYPE, REACT_MEMO_TYPE } from "./fiberAdapter";
 import type { DiscoveredComponent } from "./discoveredComponent";
 import { inspectHooks } from "./hookInspector";
-import { inspectContexts } from "./contextInspector";
+import { inspectContexts, readContextValues } from "./contextInspector";
 import { setFiberHandle } from "./fiberHandleRegistry";
 
 const fiberIds = new WeakMap<FiberNode, string>();
-const lastObservedValues = new Map<string, { props: unknown; state: unknown }>();
+const lastObservedValues = new Map<
+  string,
+  { props: unknown; state: unknown; contexts: readonly unknown[] }
+>();
 let nextFiberId = 0;
+
+function sameContextValues(a: readonly unknown[], b: readonly unknown[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+
+  // Object.is (not !==) matches React's own context-change check, and
+  // keeps a NaN context value from looking "changed" on every commit.
+  for (let i = 0; i < a.length; i += 1) {
+    if (!Object.is(a[i], b[i])) return false;
+  }
+
+  return true;
+}
 
 interface FiberIdentity {
   id: string;
@@ -45,13 +61,20 @@ function resolveFiberIdentity(fiber: FiberNode): FiberIdentity {
     fiberIds.set(fiber, existingId);
 
     const previous = lastObservedValues.get(existingId);
+    const contexts = readContextValues(fiber);
+    // A component that reads context re-renders when a context value
+    // changes even if its props are the same object and it has no hooks
+    // (memoizedState stays null), so context values are compared too.
     const rendered = previous
-      ? fiber.memoizedProps !== previous.props || fiber.memoizedState !== previous.state
+      ? fiber.memoizedProps !== previous.props ||
+        fiber.memoizedState !== previous.state ||
+        !sameContextValues(previous.contexts, contexts)
       : true;
 
     lastObservedValues.set(existingId, {
       props: fiber.memoizedProps,
       state: fiber.memoizedState,
+      contexts,
     });
 
     return { id: existingId, rendered };
@@ -59,7 +82,11 @@ function resolveFiberIdentity(fiber: FiberNode): FiberIdentity {
 
   const id = `fiber-${++nextFiberId}`;
   fiberIds.set(fiber, id);
-  lastObservedValues.set(id, { props: fiber.memoizedProps, state: fiber.memoizedState });
+  lastObservedValues.set(id, {
+    props: fiber.memoizedProps,
+    state: fiber.memoizedState,
+    contexts: readContextValues(fiber),
+  });
   return { id, rendered: true };
 }
 

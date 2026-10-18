@@ -192,6 +192,69 @@ it("marks an updated fiber as rendered when its props or state actually changed"
   });
 
   
+  interface TestContextNode {
+    context: unknown;
+    memoizedValue: unknown;
+    next: TestContextNode | null;
+  }
+
+  function contextDependencies(...values: readonly unknown[]): {
+    firstContext: TestContextNode | null;
+  } {
+    let next: TestContextNode | null = null;
+
+    for (let i = values.length - 1; i >= 0; i -= 1) {
+      next = { context: { displayName: `Ctx${i}` }, memoizedValue: values[i], next };
+    }
+
+    return { firstContext: next };
+  }
+
+  it("marks a hookless fiber as rendered when only a context value changed", () => {
+    const stableProps = { label: "same" };
+    const mountFiber = fiber(App, null, null, null, stableProps, null, contextDependencies("a"));
+    traverse(mountFiber, "root-1");
+
+    const updateFiber = fiber(App, null, null, mountFiber, stableProps, null, contextDependencies("b"));
+    const result = traverse(updateFiber, "root-1");
+
+    expect(result[0]!.rendered).toBe(true);
+  });
+
+  it("does not mark a fiber as rendered when its context values are unchanged", () => {
+    const stableProps = { label: "same" };
+    const value = { theme: "dark" };
+    const mountFiber = fiber(App, null, null, null, stableProps, null, contextDependencies(value));
+    traverse(mountFiber, "root-1");
+
+    const updateFiber = fiber(App, null, null, mountFiber, stableProps, null, contextDependencies(value));
+    const result = traverse(updateFiber, "root-1");
+
+    expect(result[0]!.rendered).toBe(false);
+  });
+
+  it("marks a fiber as rendered when it starts reading an additional context", () => {
+    const stableProps = { label: "same" };
+    const mountFiber = fiber(App, null, null, null, stableProps, null, contextDependencies("a"));
+    traverse(mountFiber, "root-1");
+
+    const updateFiber = fiber(App, null, null, mountFiber, stableProps, null, contextDependencies("a", "b"));
+    const result = traverse(updateFiber, "root-1");
+
+    expect(result[0]!.rendered).toBe(true);
+  });
+
+  it("does not treat a NaN context value as changed on every commit", () => {
+    const stableProps = { label: "same" };
+    const mountFiber = fiber(App, null, null, null, stableProps, null, contextDependencies(Number.NaN));
+    traverse(mountFiber, "root-1");
+
+    const updateFiber = fiber(App, null, null, mountFiber, stableProps, null, contextDependencies(Number.NaN));
+    const result = traverse(updateFiber, "root-1");
+
+    expect(result[0]!.rendered).toBe(false);
+  });
+
   it("records a fiber handle for every discovered component", () => {
     const appFiber = fiber(App);
 
