@@ -91,6 +91,17 @@ function resolveFiberIdentity(fiber: FiberNode): FiberIdentity {
 }
 
 /**
+ * Drops the props/state/context values remembered for a component id.
+ * Called when the component unmounts: without it, the last observed
+ * values of every unmounted component would stay referenced for the
+ * lifetime of the page. A later sighting of the same id is treated as
+ * new (rendered), which is correct for a component that comes back.
+ */
+export function forgetObservedValues(id: string): void {
+  lastObservedValues.delete(id);
+}
+
+/**
  * Resolves a stable id for a Fiber, reusing the id already assigned to
  * its `alternate` if one exists. See resolveFiberIdentity() for why
  * this is necessary.

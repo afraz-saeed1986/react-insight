@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { traverse, getFiberId } from "./traversal";
+import { traverse, getFiberId, forgetObservedValues } from "./traversal";
 import type { FiberNode } from "./fiberAdapter";
 import { REACT_FORWARD_REF_TYPE, REACT_MEMO_TYPE } from "./fiberAdapter";
 import { getFiberHandle } from "./fiberHandleRegistry";
@@ -253,6 +253,19 @@ it("marks an updated fiber as rendered when its props or state actually changed"
     const result = traverse(updateFiber, "root-1");
 
     expect(result[0]!.rendered).toBe(false);
+  });
+
+  it("forgets observed values for an id so a later sighting is treated as new", () => {
+    const appFiber = fiber(App, null, null, null, { label: "same" });
+    const [first] = traverse(appFiber, "root-1");
+
+    // Unchanged on the second sighting: remembered values are compared.
+    expect(traverse(appFiber, "root-1")[0]!.rendered).toBe(false);
+
+    forgetObservedValues(first!.id);
+
+    // The remembered values are gone, so the same fiber looks new again.
+    expect(traverse(appFiber, "root-1")[0]!.rendered).toBe(true);
   });
 
   it("records a fiber handle for every discovered component", () => {

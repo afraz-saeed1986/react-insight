@@ -182,6 +182,32 @@ it("syncs discovered components into the registry on commit", async () => {
   });
 
   
+  it("forgets the observed values of a component on unmount", async () => {
+    const rootRegistry = new RootRegistry();
+    const componentRegistry = new ComponentRegistry();
+    rootRegistry.register(createInternalRoot());
+
+    const plugin = createComponentDiscoveryPlugin({ rootRegistry, componentRegistry });
+    await plugin.setup({ emit() {}, on: () => () => {} });
+
+    const appFiber = createFiber("App");
+    const fiberRoot = { current: appFiber };
+    const hook = getInstalledHook();
+
+    hook.onCommitFiberRoot?.(1, fiberRoot);
+    // The same unchanged fiber again is a bailout, so it is not counted.
+    hook.onCommitFiberRoot?.(1, fiberRoot);
+    expect(getOnlyComponent(componentRegistry).renderCount).toBe(1);
+
+    hook.onCommitFiberUnmount?.(1, appFiber);
+    // Once the remembered values are dropped, the same fiber looks new
+    // when seen again, so it is counted. Without the cleanup it would
+    // stay at 1.
+    hook.onCommitFiberRoot?.(1, fiberRoot);
+
+    expect(getOnlyComponent(componentRegistry).renderCount).toBe(2);
+  });
+
   it("clears the fiber handle on unmount", async () => {
     const rootRegistry = new RootRegistry();
     const componentRegistry = new ComponentRegistry();

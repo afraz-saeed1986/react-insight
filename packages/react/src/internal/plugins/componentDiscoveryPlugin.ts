@@ -4,7 +4,7 @@ import type { ComponentRegistry } from "../componentRegistry";
 import type { RootRegistry } from "../rootRegistry";
 import { asFiberNode, getFiberTraversalEntry } from "../discovery/fiberAdapter";
 import { mapDiscoveredComponent } from "../discovery/componentMapper";
-import { getFiberId, traverse } from "../discovery/traversal";
+import { forgetObservedValues, getFiberId, traverse } from "../discovery/traversal";
 import { connectHookAdapter } from "../discovery/hookAdapter";
 import { deleteFiberHandle } from "../discovery/fiberHandleRegistry";
 
@@ -75,6 +75,7 @@ export function createComponentDiscoveryPlugin(
           // unmounted component's Fiber (and everything it closes
           // over) would be retained forever. See fiberHandleRegistry.ts.
           deleteFiberHandle(id);
+          forgetObservedValues(id);
         },
       });
     },
