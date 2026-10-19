@@ -161,7 +161,7 @@ export const PANEL_CSS = `
   cursor: pointer;
 }
 .ri-row:hover { background: var(--ri-bg-alt); }
-.ri-row[aria-pressed="true"] { background: var(--ri-selected); }
+.ri-row[aria-selected="true"] { background: var(--ri-selected); }
 .ri-row--unmounted { opacity: 0.5; font-style: italic; }
 .ri-label {
   display: inline-flex;
