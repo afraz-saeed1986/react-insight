@@ -401,6 +401,40 @@ describe("memo/forwardRef discovery", () => {
 
     expect(result?.displayName).toBe("ExplicitMemoName");
   });
+
+  it("reads an explicit displayName from fiber.elementType when fiber.type is the unnamed inner function of a simple memo", () => {
+    // Simple memo(fn): React sets fiber.type to the inner function and keeps
+    // the memo wrapper in fiber.elementType. After minification the inner
+    // function can have an empty name.
+    const Inner = () => null;
+    Object.defineProperty(Inner, "name", { value: "" });
+    const wrapper = memoType(Inner, "MemoChild");
+    const wrappedFiber = Object.assign(fiber(Inner), { elementType: wrapper });
+
+    const [result] = traverse(wrappedFiber, "root-1");
+
+    expect(result?.displayName).toBe("MemoChild");
+  });
+
+  it("falls back to the inner function name when the elementType wrapper has no displayName", () => {
+    function Inner() {}
+    const wrapper = memoType(Inner);
+    const wrappedFiber = Object.assign(fiber(Inner), { elementType: wrapper });
+
+    const [result] = traverse(wrappedFiber, "root-1");
+
+    expect(result?.displayName).toBe("Inner");
+  });
+
+  it("does not use a non-memo elementType without a displayName (e.g. lazy) to resolve the name", () => {
+    function Resolved() {}
+    const lazyLike = { $$typeof: Symbol.for("react.lazy") };
+    const wrappedFiber = Object.assign(fiber(Resolved), { elementType: lazyLike });
+
+    const [result] = traverse(wrappedFiber, "root-1");
+
+    expect(result?.displayName).toBe("Resolved");
+  });
 });
 
 });

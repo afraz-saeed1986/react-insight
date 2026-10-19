@@ -134,6 +134,17 @@ function isComponentFiber(fiber: FiberNode): boolean {
 }
 
 function getDisplayName(fiber: FiberNode): string {
+  // For a simple memo(fn), React sets fiber.type to the inner function and
+  // keeps the memo wrapper in fiber.elementType. An explicit displayName set
+  // on the wrapper lives there, and the inner function's own name may be
+  // empty after minification. Only an explicit displayName is read from it,
+  // so other element types (for example lazy) still resolve through
+  // fiber.type as before.
+  const { elementType } = fiber as FiberNode & { elementType?: unknown };
+  if (elementType && typeof elementType === "object") {
+    const explicit = (elementType as { displayName?: unknown }).displayName;
+    if (typeof explicit === "string" && explicit.length > 0) return explicit;
+  }
   return resolveDisplayName(fiber.type);
 }
 
