@@ -65,15 +65,16 @@ Verified with Next.js 16 (App Router, React Compiler enabled), in both
 - **Hide Next.js** internals (a preset list of framework component names).
 - Resizable: drag the top edge to change the height and the splitter to change the width of the details pane.
 - Per-row hook and context summary.
-- Detail pane for the selected component: hooks (with exact names after an on-demand inspection), contexts and timestamps.
+- Detail pane for the selected component: **Why it rendered** (the cause of its last render), hooks (with exact names after an on-demand inspection), contexts and timestamps.
 
 ## Things to know
 
 - Selecting a component, or pressing **Re-inspect**, runs an on-demand inspection that **re-executes that component's render body**. Nothing is inspected automatically.
+- **Why it rendered** shows the cause of the last render: first render, changed props (names only), changed state hooks, changed contexts, or "Parent re-rendered; no prop, state or context change detected (may be avoidable)". It uses data already collected and does not run an inspection. A state update with a new object of equal contents, and a `setState` on a class component, show "No cause detected" (or the parent message when the parent also re-rendered). `children` often appears among the changed props. See the `@react-insight/react` README for details.
 - The panel excludes itself and everything it renders from what it displays (`displayName: "ReactInsightDevtools"`), so it never observes its own renders.
 - Sibling order follows the order components were first discovered, not always React's child order (visible after a re-mount).
 - Hook names are unavailable for class components. They resolve in production React builds too, but custom hook names degrade in minified builds.
-- In a minified production build, **Hide minified** also hides your own components, because their names are minified too. Set `Component.displayName` to keep a component visible and readable.
+- In a minified production build, **Hide minified** also hides your own components, because their names are minified too, and plain function components may show as "Anonymous". Set `Component.displayName` to keep a component visible and readable.
 - **Hide Next.js** uses a fixed list of Next.js internal component names. It deliberately leaves generic names (`Root`, `Router`, `Head`, `ErrorBoundary`) visible, since your own components may use them.
 - The panel is fixed to the bottom of the viewport; its size is not remembered between page loads.
 
