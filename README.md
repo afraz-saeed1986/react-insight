@@ -22,10 +22,11 @@ DevTools panel built on that API.
 
 - Component discovery (mount, update, unmount) without modifying your components
 - Accurate per-component render counts
+- Render reasons: why a component last re-rendered (first render, changed props, state or context, or a parent re-render)
 - Structural hook tracking with value previews, and context tracking
 - On-demand exact hook names (`useState` vs `useReducer`, one level of custom hook name)
 - A reactive public API: `getComponents()`, `getComponent(id)`, `onChange()`
-- A drop-in `<DevtoolsPanel />`: resizable panel with a collapsible tree, render flash, filters (name, minimum renders, focus on a subtree, hide minified or named components, hide Next.js internals), hook and context details
+- A drop-in `<DevtoolsPanel />`: resizable panel with a collapsible tree, render flash, filters (name, minimum renders, focus on a subtree, hide minified or named components, hide Next.js internals), a "Why it rendered" section, hook and context details
 - A plugin-based, framework-agnostic runtime underneath (`@react-insight/core`)
 
 ## Packages
@@ -121,6 +122,7 @@ Engineering documentation (architecture, decisions, roadmap) lives in
 - Hook names resolve in production React builds too, but custom hook names degrade when minified. Component names can also be minified or lost in production bundles; set `Component.displayName` to keep them readable.
 - Multi-slot React 19 hooks (`useTransition`, `useActionState`, `useSyncExternalStore`, `useOptimistic`) are resolved with slot layouts that mirror React's internal implementation, so they may need updating when React changes.
 - Class components are discovered, but their hook names cannot be resolved.
+- Render reasons are best-effort: a state update with a new object of equal contents, and a `setState` on a class component, are reported as "No cause detected" (or as a parent re-render).
 
 ## License
 
