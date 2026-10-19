@@ -29,6 +29,9 @@ every package; its date is set when it is published.
 - Public read API: `getComponents()`, `getComponent(id)`, `onChange()`
 - `Insight.inspectHookNames(id)`: on-demand exact hook names and one level of custom hook name
 - Hook name resolution covers React 19 hooks (`useTransition`, `useOptimistic`, `useActionState`, `useSyncExternalStore`, `use`) and React Compiler output (`useMemoCache`)
+- `ComponentSnapshot.lastRenderReasons` and the exported `RenderReason` type: why a component last re-rendered (`mount`, `props` with the changed prop names, `state` with the changed hook indices, `context` with the changed context names, `parent`, or `unknown`). Only names and indices are kept, never values
+- Render detection also compares context values, so a component without hooks that re-renders only because of a context change is now counted
+- A `displayName` set on a `memo` wrapper is resolved, so such components no longer show as "Anonymous" in production builds where the inner function name is lost
 
 #### `@react-insight/inspector`
 
@@ -38,6 +41,8 @@ every package; its date is set when it is published.
 
 - `DevtoolsPanel`: docked bottom panel with a floating toggle (closed by default), resizable height and tree/details split, component tree with expand/collapse, unmounted-component toggle, render flash, per-row hook and context summary, detail pane with on-demand inspection
 - Tree filters: name, minimum renders, Focus on a subtree (with an ancestor breadcrumb), Hide minified names, Hide names by pattern, and a Hide Next.js preset
+- "Why it rendered" section in the details pane, listing the cause of the last re-render (first render, changed props, changed state hooks, changed contexts, or a parent re-render with no detected change)
+- Known limits of "Why it rendered": state changes are detected by comparing value previews, so `setState` with a new object of equal contents shows "No cause detected"; class components have no hooks, so their `setState` shows "No cause detected" or a parent re-render; `children` often appears among changed props
 
 #### Tooling and quality
 
