@@ -82,7 +82,26 @@ The `Insight` instance:
 | `inspectHookNames(id)` | **On demand only.** Resolves exact hook names (e.g. `useState` vs `useReducer`) and one level of custom hook name. |
 | `use(plugin)` / `destroy()` | Register a `@react-insight/core` plugin / tear down. |
 
-A `ComponentSnapshot` has `id`, `displayName`, `parentId`, `status`, `renderCount`, `mountedAt`, `lastRenderedAt`, `unmountedAt`, a structural `hooks` summary (kind and a bounded value preview) and `contexts`.
+A `ComponentSnapshot` has `id`, `displayName`, `parentId`, `status`, `renderCount`, `mountedAt`, `lastRenderedAt`, `unmountedAt`, a structural `hooks` summary (kind and a bounded value preview), `contexts` and `lastRenderReasons`.
+
+## Why a component rendered
+
+`ComponentSnapshot.lastRenderReasons` is a `ReadonlyArray<RenderReason>` that explains the component's last render. It is updated on every render and kept unchanged when a sync is not a render. One or more of these kinds can be present:
+
+- `mount`: the first render of this instance.
+- `props`: the names of the props that changed (shallow comparison with `Object.is`).
+- `state`: the state hooks whose value changed.
+- `context`: the contexts whose value changed (by the context's `displayName`, or `Context` when it has none).
+- `parent`: the parent re-rendered and no prop, state or context change was detected. The render may be avoidable.
+- `unknown`: no cause was detected.
+
+See the `RenderReason` type for the exact shape. Only names and hook indices are stored, never values.
+
+Limits:
+
+- State changes are detected by comparing bounded value previews. A `setState` with a new object of equal contents re-renders the component but is reported as `unknown`.
+- Class components have no hooks, so a `setState` on a class component is reported as `parent` or `unknown`.
+- `children` often appears among the changed props, because JSX children are new elements on every render.
 
 ## Things to know
 
@@ -90,7 +109,7 @@ A `ComponentSnapshot` has `id`, `displayName`, `parentId`, `status`, `renderCoun
 - A re-mounted component is a new instance with a new `id`; the old record stays as `unmounted`.
 - React Compiler output is supported: hook names resolve for compiled components (verified in a Next.js 16 app).
 - Multi-slot React 19 hooks (`useTransition`, `useActionState`, `useSyncExternalStore`, `useOptimistic`) are resolved with slot layouts that mirror React's internal implementation, so they may need updating when React changes.
-- Component names can be minified or lost in production bundles. Set `Component.displayName` to keep them readable.
+- Component names can be minified or lost in production bundles, and plain function components may then show as "Anonymous". Set `Component.displayName` to keep them readable. For `memo(fn)`, a `displayName` set on the wrapper is used.
 - `useContext` does not take a hook slot, so it appears under `contexts`, never under `hooks`.
 - One `react-dom` renderer and one React application per page are assumed.
 
