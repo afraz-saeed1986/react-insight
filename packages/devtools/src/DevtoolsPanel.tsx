@@ -17,6 +17,8 @@ import { filterComponentTree } from "./filterComponentTree";
 
 import { hideByName, parseNamePatterns } from "./hideByName";
 import { NEXTJS_INTERNAL_NAMES } from "./presets";
+import { clampNumber, readPanelSize, writePanelSize } from "./panelSize";
+import type { StoredPanelSize } from "./panelSize";
 
 import { PANEL_CSS } from "./styles";
 
@@ -67,7 +69,34 @@ function PanelBody({ onClose }: PanelBodyProps) {
     const [hideNextjs, setHideNextjs] = useState(false);
     const [hideNamesInput, setHideNamesInput] = useState("");
 
-      const [height, setHeight] = useState(DEFAULT_PANEL_HEIGHT);
+      // Sizes saved by an earlier drag. Read once, clamped to the current viewport.
+  const [storedSize] = useState(() => readPanelSize());
+  const [height, setHeight] = useState(() =>
+    clampNumber(
+      storedSize.height ?? DEFAULT_PANEL_HEIGHT,
+      MIN_PANEL_HEIGHT,
+      window.innerHeight - PANEL_TOP_MARGIN,
+    ),
+  );
+  // null keeps the default width from the stylesheet until the user drags.
+  const [detailsWidth, setDetailsWidth] = useState<number | null>(() =>
+    storedSize.detailsWidth === null
+      ? null
+      : clampNumber(
+          storedSize.detailsWidth,
+          MIN_DETAILS_WIDTH,
+          window.innerWidth - MIN_TREE_WIDTH,
+        ),
+  );
+  // Latest sizes during a drag. They are saved once, when the drag ends.
+  const sizeRef = useRef<StoredPanelSize>({ height, detailsWidth });
+  const sizeChangedRef = useRef(false);
+
+  const handleResizeEnd = () => {
+    if (!sizeChangedRef.current) return;
+    sizeChangedRef.current = false;
+    writePanelSize(sizeRef.current);
+  };
 
   // The panel is docked to the bottom, so its height is the distance from the
   // pointer to the bottom of the viewport. Pointer capture keeps the drag
@@ -82,12 +111,14 @@ function PanelBody({ onClose }: PanelBodyProps) {
     const max = window.innerHeight - PANEL_TOP_MARGIN;
     const next = window.innerHeight - event.clientY;
 
-    setHeight(Math.min(max, Math.max(MIN_PANEL_HEIGHT, next)));
+    const clamped = Math.min(max, Math.max(MIN_PANEL_HEIGHT, next));
+    sizeRef.current = { ...sizeRef.current, height: clamped };
+    sizeChangedRef.current = true;
+    setHeight(clamped);
   };
 
     const bodyRef = useRef<HTMLDivElement>(null);
-  // null keeps the default width from the stylesheet until the user drags.
-  const [detailsWidth, setDetailsWidth] = useState<number | null>(null);
+  
 
   // Width is measured from the right edge of the body, since the details
   // pane is on the right. Reuses handleResizeStart for pointer capture.
@@ -101,7 +132,10 @@ function PanelBody({ onClose }: PanelBodyProps) {
     const max = rect.width - MIN_TREE_WIDTH;
     const next = rect.right - event.clientX;
 
-    setDetailsWidth(Math.min(max, Math.max(MIN_DETAILS_WIDTH, next)));
+    const clamped = Math.min(max, Math.max(MIN_DETAILS_WIDTH, next));
+    sizeRef.current = { ...sizeRef.current, detailsWidth: clamped };
+    sizeChangedRef.current = true;
+    setDetailsWidth(clamped);
   };
 
   const handleToggle = useCallback((id: string) => {
@@ -231,6 +265,7 @@ function PanelBody({ onClose }: PanelBodyProps) {
         title="Drag to resize"
         onPointerDown={handleResizeStart}
         onPointerMove={handleResizeMove}
+        onLostPointerCapture={handleResizeEnd}
       />
       <div className="ri-header">
         <span className="ri-title">React Insight</span>
@@ -357,6 +392,7 @@ function PanelBody({ onClose }: PanelBodyProps) {
           title="Drag to resize"
           onPointerDown={handleResizeStart}
           onPointerMove={handleSplitMove}
+          onLostPointerCapture={handleResizeEnd}
         />
         <div
           className="ri-details-pane"

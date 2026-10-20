@@ -73,6 +73,7 @@ export const PANEL_CSS = `
   bottom: 0;
   z-index: 2147483000;
   height: 340px;
+  max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
   background: var(--ri-bg);
