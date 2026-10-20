@@ -10,7 +10,7 @@ Long-term goals: plugin-based architecture, high performance, excellent TypeScri
 
 ## Current status
 
-**Phase 1 (Core)** and **Phase 2 (React integration)** are complete. **Phase 3 (Inspector / DevTools)** is active. Condensed 2026-10-04; rationale for every item is in `DECISIONS.md`, history in `SESSION_LOG.md`.
+**Phase 1 (Core)** and **Phase 2 (React integration)** are complete. **Phase 3 (Inspector / DevTools)** is active. Condensed 2026-10-04, updated 2026-10-20; rationale for every item is in `DECISIONS.md`, history in `SESSION_LOG.md`.
 
 ### Workspace (5 packages + shared config)
 `core`, `react`, `inspector`, `devtools`, `playground`, plus `eslint-config` (private). pnpm workspace, tsup builds, shared ESLint flat config, GitHub Actions CI (build, lint, typecheck, test of every package, core-only coverage; Node 22/24). Playground has its own `lint` / `typecheck` scripts and is part of the Quality Gate.
@@ -19,17 +19,17 @@ Long-term goals: plugin-based architecture, high performance, excellent TypeScri
 Generic `Runtime`, `PluginManager`, plugin lifecycle (atomic registration, rollback on `setup()` failure, LIFO `destroy()`, state protection), `definePlugin()`, built-in Logger Plugin (factory). Event system is `mitt` inside `Runtime`.
 
 ### `@react-insight/react`
-- Public API: `createInsight()`, `InsightProvider`, `useInsight()`, `installReactDevtoolsHook()` (must be called before `react-dom` loads), and the `Insight` facade: `use()`, `destroy()`, `getComponents()`, `getComponent(id)`, `onChange()`, `inspectHookNames(id)`; type `ComponentSnapshot`.
+- Public API: `createInsight()`, `InsightProvider`, `useInsight()`, `installReactDevtoolsHook()` (must run before `react-dom` loads: from its own first-imported module, or from `instrumentation-client.ts` in Next.js), and the `Insight` facade: `use()`, `destroy()`, `getComponents()`, `getComponent(id)`, `onChange()`, `inspectHookNames(id)`; types `ComponentSnapshot` and `RenderReason`.
 - Internals: Root model/registry/lifecycle plugin (effect-based); framework-agnostic `ComponentRegistry`; Component Discovery pipeline (Hook Adapter, Fiber Adapter, Traversal, Mapper, Hook Inspector, Context Inspector) registered **eagerly** in `createInsight()`; recognizes plain, class, `memo`, `forwardRef` and combined components.
-- Render Tracking: root `commitCount`; per-component `rendered` / `renderCount` / `lastRenderedAt` via a self-maintained last-observed props/state comparison (no known accuracy gaps).
+- Render Tracking: root `commitCount`; per-component `rendered` / `renderCount` / `lastRenderedAt` via a self-maintained last-observed props/state/context-value comparison (no known accuracy gaps); `lastRenderReasons` (`RenderReason`) says why the last render happened (mount, props, state, context, parent, unknown).
 - Structural Hook Tracking with bounded value previews for `state` / `ref` / `memo-like`; structural Context Tracking (`displayName`, deduplicated by context identity).
-- On-demand hook name resolution (Fiber Handle Registry, Dispatcher Access, Hook Name Inspector): one level of custom hook name, never automatic.
+- On-demand hook name resolution (Fiber Handle Registry, Dispatcher Access, Hook Name Inspector): one level of custom hook name, never automatic. Explicit shims cover React 19 hooks with non-standard slot layouts (`useMemoCache`, `useTransition`, `useOptimistic`, `useActionState`, `useSyncExternalStore`, `use`).
 
 ### `@react-insight/inspector`
 `inspectComponent(insight, id)` — `getComponent()` + `inspectHookNames()`. Depends only on the public `Insight` API; no Fiber knowledge.
 
 ### `@react-insight/devtools`
-`DevtoolsPanel` (no props), the only public export: component tree (by `parentId`), detail pane (hooks joined with on-demand hook names, contexts), render flash, name filter, minimum-renders filter, per-row hook/context summary. Built on the public `Insight` API and `inspectComponent()`; pure helpers covered by 34 unit tests. `react` and `@react-insight/react` are peerDependencies (one shared `InsightContext`); the panel and its subtree exclude themselves via an explicit `displayName`.
+`DevtoolsPanel` (no props), the only public export: component tree (by `parentId`), detail pane (hooks joined with on-demand hook names, contexts), render flash, name filter, minimum-renders filter, per-row hook/context summary, a "Why it rendered" section, expand/collapse, ARIA tree keyboard navigation, and a remembered panel size (bottom-docked, closed by default). Built on the public `Insight` API and `inspectComponent()`; pure helpers covered by unit tests. `react` and `@react-insight/react` are peerDependencies (one shared `InsightContext`); the panel and its subtree exclude themselves via an explicit `displayName`.
 
 ### `playground`
 The integration environment: imports workspace packages as an external app would (no relative or internal imports). Renders a real React tree through `InsightProvider` and mounts `DevtoolsPanel` from `@react-insight/devtools`. `ContextProbe` under `ThemeContext.Provider value="dark"` is a permanent Context Tracking fixture. No unit tests.
@@ -39,7 +39,7 @@ The integration environment: imports workspace packages as an external app would
 ## Not started
 
 - Timeline (needs a per-event history in `ComponentRegistry`).
-- npm release of the packages. Publishing readiness so far: package metadata, per-package README and LICENSE, root README and CHANGELOG. Remaining: tarball verification (`pnpm pack`, `publint`, `attw`).
+- npm release of the packages. Publishing readiness so far: package metadata, per-package README and LICENSE, root README and CHANGELOG. Tarballs verified (`pnpm pack`, `publint`, `attw`, `pnpm publish -r --dry-run`, fresh-app production smoke test, 2026-10-05 to 07). The publish itself is postponed by the maintainer (2026-10-20); nothing has been published.
 - Session management.
 - A nested custom-hook tree for `inspectHookNames()` (no consumer).
 - A React hook wrapper for the inspector (no consumer).
@@ -63,7 +63,7 @@ Core coverage thresholds (statements 90, lines 90, functions 85, branches 80) ar
 
 ## Current focus
 
-Phase 3: the DevTools panel is its own package (`@react-insight/devtools`) and Playground consumes it. Candidates for the next slice: finish npm publishing readiness (tarball verification; no pipeline change); design Timeline (history structure in the registry); fix sibling order (sibling index in the always-on pipeline); the last two need a short approved design first. See `ROADMAP.md`.
+Phase 3: the DevTools panel is its own package (`@react-insight/devtools`) and Playground consumes it. Recent work (2026-10-07 to 20): Next.js support, render reasons, panel keyboard navigation and remembered size. Candidates for the next slice: the first npm publish (postponed for now; a walkthrough is the next task); design Timeline (history structure in the registry); fix sibling order (sibling index in the always-on pipeline); the last two need a short approved design first. See `ROADMAP.md`.
 
 ---
 
@@ -79,8 +79,10 @@ Phase 3: the DevTools panel is its own package (`@react-insight/devtools`) and P
 
 ## Known limitations
 - Tree sibling order follows registry insertion order, not React child order (visible after a re-mount).
+- Render reasons are best-effort: a state change with an equal bounded preview reports "No cause detected", and class components have no hook-level reasons.
+- In production Next.js builds, plain function component names are lost (shown as "Anonymous") unless `displayName` is set.
 - Single `react-dom` renderer and a single React application per page are assumed.
 - Structural hooks cannot distinguish `useState` / `useReducer` or `useMemo` / `useCallback`, nor name hooks; `inspectHookNames()` resolves both on demand (development builds; custom hook names degrade under minification; class components excluded).
 
 ## Next milestone
-Choose one of the Phase 3 candidates above (publishing readiness, or design for Timeline / sibling order). The platform it builds on: a complete Core, full discovery pipeline, accurate Render Tracking, structural Hook and Context Tracking, a public read API with `onChange()`, on-demand hook names, a passing CI, and a five-package monorepo including a separate `@react-insight/devtools` package.
+Choose one of the Phase 3 candidates above (the first npm publish, or design for Timeline / sibling order). The platform it builds on: a complete Core, full discovery pipeline, accurate Render Tracking, structural Hook and Context Tracking, a public read API with `onChange()`, on-demand hook names, a passing CI, and a five-package monorepo including a separate `@react-insight/devtools` package.
