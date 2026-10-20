@@ -19,6 +19,12 @@ export interface FiberNode {
    * component's invocation ignores it.
    */
   ref?: unknown;
+  /**
+   * Same optionality rationale as pendingProps. For a simple memo(fn)
+   * component, `type` is the inner function and the memo wrapper lives
+   * here, so traversal.ts reads an explicit wrapper displayName from it.
+   */
+  elementType?: unknown;
 }
 
 export interface HookNode {

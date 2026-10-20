@@ -140,7 +140,7 @@ function getDisplayName(fiber: FiberNode): string {
   // empty after minification. Only an explicit displayName is read from it,
   // so other element types (for example lazy) still resolve through
   // fiber.type as before.
-  const { elementType } = fiber as FiberNode & { elementType?: unknown };
+  const { elementType } = fiber;
   if (elementType && typeof elementType === "object") {
     const explicit = (elementType as { displayName?: unknown }).displayName;
     if (typeof explicit === "string" && explicit.length > 0) return explicit;
