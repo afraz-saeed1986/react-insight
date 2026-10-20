@@ -1,6 +1,6 @@
 # Session Log
 
-Condensed 2026-10-04. Sessions 1-25 are summarized per milestone (what shipped,
+Condensed 2026-10-04, updated 2026-10-20. Sessions 1-25 are summarized per milestone (what shipped,
 real findings, state at the end); the full prior narrative is in git history.
 Decision rationale lives in `DECISIONS.md`, not here. Newest session first
 after the condensed history.
@@ -29,6 +29,35 @@ after the condensed history.
 ### Phase 3 — Inspector (Sessions 24-25)
 - **S24:** real `ci.yml` added and verified; value preview extended to `ref` / `memo-like` (+ 200-char string cap); `ComponentRegistry` tests completed; `Insight.getComponent(id)`; `Insight.inspectHookNames(id)` (on-demand dispatcher swap; two technique/dependency decisions reversed after research); `@react-insight/inspector` created (fourth package).
 - **S25:** Playground "Inspect" button (first UI consumer); `memo` / `forwardRef` support across the whole discovery pipeline (previously invisible); `dispatcherAccess.test.ts`. State: all `.ai/` docs synchronized.
+
+---
+
+## Session 29 (2026-10-07 → 2026-10-20) — Next.js, render reasons, panel behavior
+
+**Goal.** Validate the packed tarballs in a real Next.js app, then improve what a user sees in the panel before the first npm release.
+
+**Delivered (small gated steps).**
+1. Hook name resolution shims for React 19 / React Compiler output: `useMemoCache`, `useTransition`, `useOptimistic`, `useActionState`, `useSyncExternalStore`, `use`; custom hook names only for `useXxx` callers (2026-10-13 to 17).
+2. Next.js setup: the hook is installed from `src/instrumentation-client.ts` (2026-10-17), documented in the READMEs.
+3. Panel: bottom-docked, closed by default (body mounts only while open), filters, expand/collapse (2026-10-07 to 17).
+4. Render detection fixes and `ComponentSnapshot.lastRenderReasons` / exported `RenderReason`, shown as "Why it rendered" in the details pane (2026-10-18).
+5. `memo` wrapper `displayName` read from `fiber.elementType`; `elementType` declared on `FiberNode` so the cast in `getDisplayName()` is gone (2026-10-19 to 20).
+6. Panel keyboard navigation (ARIA tree; arrow keys only move focus because selection runs an inspection) and remembered panel size in `localStorage`, capped to the viewport (2026-10-19 to 20).
+7. READMEs and `CHANGELOG.md` updated; all `.ai/` docs except `PROJECT_CONTEXT.md` synchronized with the code (2026-10-20).
+
+**Real findings.**
+- Next.js: the separate-module hook trick worked in `next dev` but the production build showed an empty tree; `instrumentation-client.ts` fixed it. `renderers.size` stays unreliable as a check in dev.
+- Render detection: a component without hooks that re-rendered only because of a context change was under-counted; remembered values were written but never released on unmount. Both fixed.
+- In production Next builds, plain function component names are lost ("Anonymous") unless `displayName` is set; a simple `memo(fn)` showed as "Anonymous" because its wrapper name lives in `elementType`.
+- The panel could overflow the viewport when the window shrank after the panel was enlarged; fixed with a CSS `max-height`.
+
+**Verification.** The developer reported the Quality Gate passing for each code step, CI green for each push (checked with `gh run list`), and manual validation passing: "Why it rendered" in a real Next.js 16 app (dev and production, React Compiler), every prediction matched; keyboard navigation and persisted size (7 manual checks each time).
+
+**Decisions.** A per-row render-reason indicator was decided against for now (the reason is already in the details pane); revisit only if feedback asks. Publishing to npm is postponed by the maintainer.
+
+**Known issues.** Sibling order follows registry insertion order (needs design). A state change with an equal bounded preview reports "No cause detected". Nothing is published to npm.
+
+**Next recommended step.** `PROJECT_CONTEXT.md` sync, then a step-by-step walkthrough for the first npm publish of `0.1.0` (developer-run).
 
 ---
 
