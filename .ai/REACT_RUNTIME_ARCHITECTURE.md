@@ -775,7 +775,7 @@ as of `DECISIONS.md`, 2026-07-26). As of 2026-08-24, `FiberNode` also
 carries an optional `pendingProps: unknown`, read only by Hook Name
 Inspector (below) when re-invoking a component; as of 2026-08-25, it
 also carries an optional `ref: unknown`, needed specifically for
-re-invoking a `forwardRef` component's `render(props, ref)` signature.
+re-invoking a `forwardRef` component's `render(props, ref)` signature; as of 2026-10-19, it also carries an optional `elementType: unknown`, read only by Traversal's `getDisplayName()` to find an explicit `displayName` on a simple `memo(fn)` wrapper (for such a fiber `type` is the inner function and the wrapper is in `elementType`).
 Both are optional specifically so every existing fixture across the
 discovery test suite keeps compiling unmodified. This layer also owns
 a second, related raw shape: `HookNode` (`memoizedState: unknown`,
@@ -1538,7 +1538,7 @@ is genuinely intended.
 | -------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | React → Hook Adapter            | Raw React callback arguments                                                                       | No — never leaves Hook Adapter                 |
 | Hook Adapter → Fiber Adapter    | Internal runtime event (raw Fiber/FiberRoot ref)                                                   | No — never leaves Fiber Adapter                |
-| Fiber Adapter → Traversal       | Single Fiber entry point (`alternate`, `memoizedProps`, `memoizedState`, `dependencies`, `pendingProps`, `ref`) | No — never leaves Traversal                    |
+| Fiber Adapter → Traversal       | Single Fiber entry point (`alternate`, `memoizedProps`, `memoizedState`, `dependencies`, `pendingProps`, `ref`, `elementType`) | No — never leaves Traversal                    |
 | Traversal → Hook Inspector      | Single component Fiber; `memoizedState` interpreted as `HookNode` list                             | No — never leaves Hook Inspector               |
 | Hook Inspector → Traversal      | `HookSummary[]` (`{ index, kind, value? }`; no `HookNode` or Fiber reference)                      | Yes — passed through unchanged                 |
 | Traversal → Context Inspector   | Single component Fiber; `dependencies.firstContext` interpreted as `ContextDependencyNode` list    | No — never leaves Context Inspector            |
