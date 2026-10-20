@@ -340,6 +340,8 @@ The pipeline is intentionally linear to simplify reasoning, testing, and future 
 
 **Implementation note (2026-07-29):** the original downstream "Tracking" layer shown in the first version of this document is not a separate implementation layer in the current code. Root-level commit tracking is owned by `RootRegistry` and invoked by the Component Discovery Plugin when a commit arrives. Per-component `rendered` detection is resolved inside Traversal using `lastObservedValues`; structural Hook Tracking is resolved by Hook Inspector; and structural Context Tracking is resolved by Context Inspector. All three component-level facts are then carried through Traversal → Mapper → Component Registry and exposed through `ComponentSnapshot`. This keeps each concern at the layer where its required input already exists and avoids introducing a consumer-only layer without a real consumer, consistent with Principle 5.
 
+**Implementation note (2026-10-18):** "why did it render" is not a separate layer either. Traversal reports `changedPropKeys` and `parentRendered` as part of its per-component facts, and `ComponentRegistry.sync()` derives `lastRenderReasons` from them with the pure `computeRenderReasons()` (see Section 6, Component Registry), so it travels the same Traversal → Mapper → Component Registry → `ComponentSnapshot` path as `rendered`, `hooks` and `contexts`.
+
 ## The long-term concepts of Timeline and richer tracking remain downstream consumers that can be added later. They are not current runtime pipeline layers. Inspector, as of 2026-08-24, has begun (see "On-demand Side Channel" below and Section 6) but deliberately as a side channel outside this pipeline, not a new pipeline stage.
 
 ## On-demand Side Channel
@@ -377,14 +379,14 @@ The runtime processes a commit in the following order:
 2. The Hook Adapter receives the commit notification.
 3. The Component Discovery Plugin records the root-level commit when a root is registered.
 4. The Fiber Adapter extracts the traversal entry point.
-5. Traversal walks the Fiber tree, filtering to fibers `isComponentFiber()` recognizes (plain function, class, `memo`, or `forwardRef` — the last two since 2026-08-25) and resolves stable component ids plus the `rendered` fact, and records a fiber handle per component (Fiber Handle Registry).
+5. Traversal walks the Fiber tree, filtering to fibers `isComponentFiber()` recognizes (plain function, class, `memo`, or `forwardRef` — the last two since 2026-08-25) and resolves stable component ids plus the `rendered` fact, (and, for a component that rendered, `changedPropKeys` and `parentRendered`), and records a fiber handle per component (Fiber Handle Registry).
 6. Hook Inspector resolves structural hook summaries for each component.
 7. Context Inspector resolves structural context summaries for each component.
 8. The Mapper converts the extracted facts into `ComponentSyncInput`.
-9. Component Registry synchronizes structural state and lifecycle/render history.
+9. Component Registry synchronizes structural state and lifecycle/render history and, for a component that rendered, derives `lastRenderReasons`.
 10. `Insight.getComponents()`/`getComponent()` project the internal records into read-only `ComponentSnapshot` values.
 
-Unmounts follow a separate path: React notifies the Hook Adapter, the Fiber Adapter validates the raw Fiber, the stable component id is resolved, `ComponentRegistry.markUnmounted()` preserves the component's history, and the Fiber Handle Registry's entry for that id is deleted.
+Unmounts follow a separate path: React notifies the Hook Adapter, the Fiber Adapter validates the raw Fiber, the stable component id is resolved, `ComponentRegistry.markUnmounted()` preserves the component's history, the Fiber Handle Registry's entry for that id is deleted, and Traversal's remembered observed values for that id are released (`forgetObservedValues()`).
 
 On-demand hook name resolution follows neither path — see "On-demand Side Channel" above.
 
@@ -441,6 +443,8 @@ architectural sense used here: it holds no _domain_ state (no
 needed to produce a correct, stateless-from-the-Registry's-perspective
 output on every call.
 
+**2026-10-18 note.** The observed values now also include the raw context values (`{ props, state, contexts }`), and `lastObservedValues` entries are released on unmount by `forgetObservedValues(id)`, called from `componentDiscoveryPlugin`'s `onUnmount` next to the Fiber Handle Registry cleanup. Before that, entries were only ever written, so every unmounted component's last props, state and context values stayed referenced for the life of the page. To avoid adding more state here, `traverse()` passes `parentRendered` down the recursion as an argument instead of keeping a per-commit lookup structure.
+
 **A second, larger exception, added 2026-08-24:** the Fiber Handle Registry is genuinely stateful in the fullest sense — it retains a live Fiber object reference across an arbitrary span of time, not just across a single traversal call. This is a deliberate, narrow, and explicitly memory-bounded exception (see Section 6), justified only because the Hook Name Inspector it feeds has no other way to locate "the current fiber for this component id" when invoked outside the commit that produced it.
 
 ---
@@ -457,7 +461,7 @@ Each layer owns exactly one concern.
 | Hook Inspector        | Classify structural hook information                   |
 | Context Inspector     | Inspect structural Context dependencies                |
 | Mapper                | Translate extracted facts into domain data              |
-| Component Registry    | Own component graph and history                        |
+| Component Registry    | Own component graph and history, including why each component last rendered (2026-10-18)                        |
 | Root Registry         | Own root-level commit history                          |
 | Fiber Handle Registry | Own on-demand-inspectable live fiber references (2026-08-24) |
 | Dispatcher Access     | Locate React's current hooks dispatcher slot (2026-08-24) |
@@ -643,6 +647,8 @@ visibility and timing requirements:
   defensively (for graceful, if late, degradation when the consuming
   application forgot to call it early), then attaches the actual
   commit/unmount callbacks.
+
+**How the application calls `installReactDevtoolsHook()` (2026-10-07, 2026-10-17).** Calling it at the top of the entry file is not enough: `import` statements are evaluated before the importing file's body, so the call ran after `react-dom` had loaded. It must live in its own module that is the first import. Vite's dev server masks the mistake, because react-refresh installs its own hook first; a production bundle shows an empty tree. In Next.js the evaluation order is not under the application's control, and the separate-module pattern showed an empty tree in a production build (it worked in `next dev`), so the hook is installed from `src/instrumentation-client.ts`, which Next runs before hydration (verified with Next.js 16, App Router, React Compiler). No library code changed for either; both are documented in the READMEs. See `DECISIONS.md`, 2026-10-07 and 2026-10-17.
 
 **Not extended for on-demand hook name resolution.** An earlier design
 for Hook Name Inspector (below) planned to capture `currentDispatcherRef`
@@ -833,6 +839,8 @@ covering `memo(forwardRef(...))` — that prefers an explicit
 `displayName` at any layer, then the innermost function's `.name`,
 falling back to `"Anonymous"`.
 
+**2026-10-19 addendum — `elementType`.** For a simple `memo(fn)` React sets `fiber.type` to the inner function and keeps the memo wrapper in `fiber.elementType`, so a `displayName` set on the wrapper was never seen, and in a production build the inner function's name is often empty (the component showed as "Anonymous"). `getDisplayName()` now first reads an explicit `displayName` from `fiber.elementType` when it is an object, then resolves through `fiber.type` as before. `elementType` is deliberately not a general replacement for `fiber.type`: for `lazy` it is the lazy object, which has no name. See `DECISIONS.md`, 2026-10-19.
+
 **Scope was initially underestimated when this was proposed.** It was
 first framed as "extend `inspectHookNames()` to support memo/forwardRef"
 — an on-demand-only change. Inspecting this function before starting
@@ -841,7 +849,7 @@ only the on-demand layer would have had no effect, since the Fiber
 Handle Registry is only ever populated for fibers this function already
 recognizes. See `DECISIONS.md`, 2026-08-25.
 
-**No changes were needed in Hook Inspector, Context Inspector, or this
+**As of the 2026-08-25 change, no changes were needed in Hook Inspector, Context Inspector, or this
 function's own `resolveFiberIdentity()`/`rendered` logic** — all
 operate on Fiber-instance-level state (`memoizedState`, `dependencies`,
 `memoizedProps`) that exists regardless of what shape `fiber.type` is.
@@ -871,7 +879,7 @@ re-rendered component as a new mount, leaving the original entry as a
 permanent orphaned "ghost" — fixed 2026-07-20, see `DECISIONS.md`.
 
 **`rendered`** — via a `memoizedProps`/`memoizedState` comparison
-against `lastObservedValues`, a `Map<id, { props, state }>` that
+against `lastObservedValues`, a `Map<id, { props, state, contexts }>` that
 Traversal maintains itself, updated on every resolution — **not**
 against Fiber object identity or against `alternate`. Two earlier
 identity-based designs were tried and rejected, each only after being
@@ -906,6 +914,10 @@ affected by any version of this, since it doesn't depend on Fiber
 identity at all. See `DECISIONS.md`, 2026-07-26, for the full
 experiment history.
 
+**2026-10-18 addendum — contexts, and releasing remembered values.** `lastObservedValues` entries are `{ props, state, contexts }`. `contexts` holds the raw `memoizedValue` of every context dependency (`readContextValues()` in Context Inspector), compared with `Object.is` (the check React itself uses to propagate a context change). Without it, a hookless component (`memoizedState` stays `null`) that re-renders only because a context it reads changed matched neither props nor state, and its `renderCount` lagged. A component that reads no context shares one empty array, so the common case allocates nothing. Entries are removed by `forgetObservedValues(id)`, called from `componentDiscoveryPlugin`'s `onUnmount` next to the Fiber Handle Registry cleanup; a fiber seen again afterwards is treated as new. See `DECISIONS.md`, 2026-10-18.
+
+**2026-10-18 addendum — why a component rendered.** For a component that rendered, Traversal also reports `changedPropKeys` (names, never values, of the props whose identity changed since the previous visit, computed by `diffPropKeys`; it returns early when the props object is identical, before anything is allocated, and a shared empty array is used when there is nothing to report) and `parentRendered` (whether the nearest component ancestor rendered in the same commit). `parentRendered` is passed down the recursive `visit()` as an argument, so no per-commit lookup structure is allocated. Both are consumed by `ComponentRegistry.sync()` to compute `lastRenderReasons` (see Component Registry).
+
 For each qualifying Fiber, Traversal also delegates to Hook Inspector
 to resolve **`hooks`** (see below), includes the result unchanged in
 its output, and (since 2026-08-24) records the fiber itself in the
@@ -920,7 +932,7 @@ A single Fiber reference (from the Fiber Adapter).
 **Output**
 
 A list of minimal, extracted records — not raw Fiber references —
-containing only the fields required downstream: an identifier, a
+containing only the fields required downstream (besides the fields listed here, `contexts`, `changedPropKeys` and `parentRendered` are carried the same way, described above and in Context Inspector): an identifier, a
 display name, a parent identifier, whether this fiber was rendered in
 this commit (`rendered: boolean`, per the resolution above), and a
 structural hook summary (`hooks: HookSummary[]`, per Hook Inspector
@@ -1235,8 +1247,8 @@ method reads the next node from the fiber's already-committed hooks
 linked list — the same list Hook Inspector walks — instead of
 performing real update logic, while recording the called method's name
 and call stack. This must never mutate real hook state. Any other hook
-name (`useTransition`, `useId`, `useDeferredValue`,
-`useSyncExternalStore`, `useImperativeHandle`, future hooks, ...) falls
+name (`useId`, `useDeferredValue`,
+`useImperativeHandle`, future hooks, ...) falls
 through to a generic, best-effort `Proxy` handler: records the call,
 consumes exactly one hooks-list slot, returns the raw stored value —
 an explicit, documented trade-off for anything more elaborate, rather
@@ -1246,7 +1258,9 @@ duration of the re-invocation, and the real dispatcher is always
 restored in a `finally` block — the same defensive posture
 `react-devtools-shared` uses around its own equivalent call.
 
-**Custom hook name resolution required three rounds of real-execution
+**Explicit shims for hooks whose slot layout is not one per call (2026-10-14, 2026-10-17).** The generic fallback's one-slot assumption broke real code: React Compiler output calls `useMemoCache(n)` (the fallback consumed a slot and returned a raw number, so the re-invoked component threw and `inspectHookNames()` returned `undefined`), and the React 19 hooks that return tuples (`useTransition`, `useOptimistic`, `useActionState`) or use a different slot count (`useSyncExternalStore`: 2, `use`: 0) were unresolved or mislabeled. These now have explicit shims. `useMemoCache` takes no hooks-list slot, records no call and returns an `n`-sized array filled with the memo cache sentinel. `recordCall` takes a slot count and records one entry per slot, so an entry's `index` always equals its slot index. The slot layouts mirror React 19's mount implementation, which is internal and may change between React versions; single-slot hooks and the generic fallback are unchanged. See `DECISIONS.md`, 2026-10-13 → 2026-10-17.
+
+**Custom hook name resolution required four rounds of real-execution
 correction**, none reasoned about correctly in advance:
 
 1. Constructing `Error()` inside a shared `recordCall()` helper (rather
@@ -1271,7 +1285,7 @@ position, rather than a garbage value); and skipping leading frames
 whose name is in a known set of internal names (every built-in hook
 export name, plus `recordCall` itself) until the first frame that
 isn't — that frame is either a named custom hook, or the component
-function itself (no enclosing custom hook).
+function itself (no enclosing custom hook). A fourth finding (2026-10-13), from a minified production bundle: our own internal stack frames (for example `recordCall`) lose their names there, so the first non-skipped frame was reported as a bogus `customHookName` (`"N"`). Only a caller named `useXxx` (Rules of Hooks) is now reported; any other caller is ignored.
 
 **Input**
 
@@ -1361,6 +1375,8 @@ React development-mode cause was not fully established, but
 deduplication makes the output correct regardless of duplicate nodes in
 the dependency list.
 
+**`readContextValues()` (2026-10-18).** Alongside `inspectContexts()`, the module exports `readContextValues(fiber)`, which returns the raw `memoizedValue` of every context dependency, without any preview. Traversal uses it to compare context values with `Object.is` between commits (see Traversal), so a context change is visible to render detection even when props and state are unchanged. It returns a shared empty array when the fiber reads no context. Unlike the bounded, serializable preview that `inspectContexts()` returns, these raw values are only held inside Traversal's `lastObservedValues` and never leave it.
+
 **Important distinction from Hook Inspector**
 
 `useContext()` does not consume a slot in the hooks linked list, so
@@ -1408,7 +1424,7 @@ dependencies live outside the hooks linked list.
 Pure, stateless translation of a single extracted Traversal record
 into the structural shape of a `ComponentNode` (`id`, `rootId`,
 `displayName`, `parentId`), plus a straight pass-through of the
-`rendered`, `hooks`, and `contexts` facts already resolved by the
+`rendered`, `hooks`, `contexts`, `changedPropKeys` and `parentRendered` facts already resolved by the
 discovery layer.
 
 **Input**
@@ -1419,7 +1435,7 @@ One extracted record from Traversal (including `rendered` and
 **Output**
 
 A partial `ComponentNode` containing structural fields plus
-`rendered`, `hooks`, and `contexts` (`ComponentSyncInput`).
+`rendered`, `hooks`, `contexts`, `changedPropKeys` and `parentRendered` (`ComponentSyncInput`).
 
 **Must not know**
 
@@ -1458,9 +1474,11 @@ mount or an update (`sync()`), and mark components as unmounted
 without discarding their history (`markUnmounted()`) on explicit
 unmount notifications from the Hook Adapter → Fiber Adapter →
 Traversal path. Own `mountedAt`, `unmountedAt`, `status`,
-`renderCount`, `lastRenderedAt`, `hooks`, and `contexts`. Also owns a
+`renderCount`, `lastRenderedAt`, `hooks`, `contexts`, and `lastRenderReasons`. Also owns a
 self-contained change-notification mechanism (`subscribe()`), separate
 from and independent of `@react-insight/core`'s event system.
+
+**Render reasons (2026-10-18).** When a `sync()` call has `rendered: true`, the registry also records why, in `lastRenderReasons`, using the pure `computeRenderReasons()` (`renderReasons.ts`) over what Traversal observed: `changedPropKeys` and `parentRendered` from the incoming input, plus the previous and current `hooks` and `contexts` of the stored node. The result is a list of `RenderReason` values: `mount` for a new node (a shared constant), otherwise `props` (changed prop names), `state` (indices of changed `state`-kind hooks only; `ref`, `memo-like` and `effect` hooks are consequences of a render, not causes) and `context` (changed context names), falling back to `parent` when the parent rendered in the same commit and `unknown` otherwise. State changes are detected by comparing the bounded value previews, so a new object with equal contents is not detected. When a sync is not a render, the previous reasons are kept. Only names and hook indices are stored, never values, and no history is kept. `changedPropKeys` and `parentRendered` are optional on `ComponentSyncInput`, so existing callers are unaffected. See `DECISIONS.md`, 2026-10-18.
 
 `sync()` compares the incoming `ComponentSyncInput` against any
 existing stored state before writing or notifying. When the incoming
@@ -1529,7 +1547,7 @@ is genuinely intended.
 | Fiber Handle Registry → Hook Name Inspector | The raw `FiberNode`, via `createInsight.ts`'s `inspectHookNames()`                        | No — never leaves Hook Name Inspector           |
 | Dispatcher Access → Hook Name Inspector | A live `{ current }` dispatcher ref                                                        | No — never leaves Hook Name Inspector           |
 | Hook Name Inspector → public API | `ReadonlyArray<InspectedHookName>` (`{ index, hookName, customHookName? }`)                       | Yes — public contract (`Insight.inspectHookNames()`) |
-| Traversal → Mapper              | `DiscoveredComponent` (`id`, `displayName`, `parentId`, `rootId`, `rendered`, `hooks`, `contexts`) | No — internal contract only                    |
+| Traversal → Mapper              | `DiscoveredComponent` (`id`, `displayName`, `parentId`, `rootId`, `rendered`, `hooks`, `contexts`, `changedPropKeys`, `parentRendered`) | No — internal contract only                    |
 | Mapper → Component Registry     | `ComponentSyncInput` / `ComponentNode`                                                             | Yes — domain-level consumers may read the data |
 | Component Registry → Public API | `ComponentSnapshot` (read-only projection; no `rootId`, Fiber, or React internals)                 | Yes — public contract                          |
 | Public API → @react-insight/inspector | `ComponentSnapshot` and `InspectedHookName[]` (via `getComponent()`/`inspectHookNames()`)     | Yes — that package's only inputs                |
@@ -1567,6 +1585,8 @@ tracked in `DECISIONS.md`:
   explicit deferred item (the gap wasn't identified as its own concern
   until inspecting `traversal.ts` while scoping the on-demand
   extension), but is recorded here now for completeness.
+
+- **A render-reason history and a per-row reason indicator in the tree are deferred** (2026-10-18, 2026-10-20). Only the cause of the last render is kept (`lastRenderReasons`, no history), and the tree shows no per-row indicator because the reason is already in the details pane. Both wait for a real consumer or user feedback.
 
 Per-component render detection for ancestors/siblings cloned along a
 reconciliation path without themselves re-rendering is no longer a
