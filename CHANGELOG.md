@@ -42,6 +42,8 @@ every package; its date is set when it is published.
 - `DevtoolsPanel`: docked bottom panel with a floating toggle (closed by default), resizable height and tree/details split, component tree with expand/collapse, unmounted-component toggle, render flash, per-row hook and context summary, detail pane with on-demand inspection
 - Tree filters: name, minimum renders, Focus on a subtree (with an ancestor breadcrumb), Hide minified names, Hide names by pattern, and a Hide Next.js preset
 - "Why it rendered" section in the details pane, listing the cause of the last re-render (first render, changed props, changed state hooks, changed contexts, or a parent re-render with no detected change)
+- Keyboard navigation and ARIA roles for the component tree (`tree`, `treeitem`, roving tab stop; arrow keys never select, so no inspection runs without Enter, Space or a click)
+- The panel height and the details pane width are remembered in `localStorage`; the panel is capped at the viewport height minus 80px
 - Known limits of "Why it rendered": state changes are detected by comparing value previews, so `setState` with a new object of equal contents shows "No cause detected"; class components have no hooks, so their `setState` shows "No cause detected" or a parent re-render; `children` often appears among changed props
 
 #### Tooling and quality
