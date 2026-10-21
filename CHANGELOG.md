@@ -5,10 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-Nothing has been published to npm yet. The first release will be `0.1.0` for
-every package; its date is set when it is published.
-
 ## [Unreleased]
+
+## [0.1.0] - 2026-10-21
 
 ### Added
 
