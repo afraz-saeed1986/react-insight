@@ -10,7 +10,7 @@ Long-term goals: plugin-based architecture, high performance, excellent TypeScri
 
 ## Current status
 
-**Phase 1 (Core)** and **Phase 2 (React integration)** are complete. **Phase 3 (Inspector / DevTools)** is active. Condensed 2026-10-04, updated 2026-10-20; rationale for every item is in `DECISIONS.md`, history in `SESSION_LOG.md`.
+**Phase 1 (Core)** and **Phase 2 (React integration)** are complete. **Phase 3 (Inspector / DevTools)** is active. The first release, `0.1.0` of `core`, `react`, `inspector` and `devtools`, was published to npm on 2026-10-21. Condensed 2026-10-04, updated 2026-10-21; rationale for every item is in `DECISIONS.md`, history in `SESSION_LOG.md`.
 
 ### Workspace (5 packages + shared config)
 `core`, `react`, `inspector`, `devtools`, `playground`, plus `eslint-config` (private). pnpm workspace, tsup builds, shared ESLint flat config, GitHub Actions CI (build, lint, typecheck, test of every package, core-only coverage; Node 22/24). Playground has its own `lint` / `typecheck` scripts and is part of the Quality Gate.
@@ -63,7 +63,7 @@ Core coverage thresholds (statements 90, lines 90, functions 85, branches 80) ar
 
 ## Current focus
 
-Phase 3: the DevTools panel is its own package (`@react-insight/devtools`) and Playground consumes it. Recent work (2026-10-07 to 20): Next.js support, render reasons, panel keyboard navigation and remembered size. Candidates for the next slice: the first npm publish (postponed for now; a walkthrough is the next task); design Timeline (history structure in the registry); fix sibling order (sibling index in the always-on pipeline); the last two need a short approved design first. See `ROADMAP.md`.
+Phase 3: the DevTools panel is its own package (`@react-insight/devtools`) and Playground consumes it. Recent work (2026-10-07 to 21): Next.js support, render reasons, panel keyboard navigation and remembered size, and the first npm release (`0.1.0`). Candidates for the next slice: design Timeline (history structure in the registry); fix sibling order (sibling index in the always-on pipeline); both need a short approved design first. See `ROADMAP.md`.
 
 ---
 
@@ -85,4 +85,4 @@ Phase 3: the DevTools panel is its own package (`@react-insight/devtools`) and P
 - Structural hooks cannot distinguish `useState` / `useReducer` or `useMemo` / `useCallback`, nor name hooks; `inspectHookNames()` resolves both on demand (development builds; custom hook names degrade under minification; class components excluded).
 
 ## Next milestone
-Choose one of the Phase 3 candidates above (the first npm publish, or design for Timeline / sibling order). The platform it builds on: a complete Core, full discovery pipeline, accurate Render Tracking, structural Hook and Context Tracking, a public read API with `onChange()`, on-demand hook names, a passing CI, and a five-package monorepo including a separate `@react-insight/devtools` package.
+Choose one of the Phase 3 candidates above (design for Timeline / sibling order). The platform it builds on: a complete Core, full discovery pipeline, accurate Render Tracking, structural Hook and Context Tracking, a public read API with `onChange()`, on-demand hook names, a passing CI, and a five-package monorepo including a separate `@react-insight/devtools` package.

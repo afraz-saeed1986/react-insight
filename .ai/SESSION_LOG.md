@@ -1,6 +1,6 @@
 # Session Log
 
-Condensed 2026-10-04, updated 2026-10-20. Sessions 1-25 are summarized per milestone (what shipped,
+Condensed 2026-10-04, updated 2026-10-21. Sessions 1-25 are summarized per milestone (what shipped,
 real findings, state at the end); the full prior narrative is in git history.
 Decision rationale lives in `DECISIONS.md`, not here. Newest session first
 after the condensed history.
@@ -32,6 +32,32 @@ after the condensed history.
 
 ---
 
+## Session 30 (2026-10-21) — first npm release
+
+**Goal.** Publish `0.1.0` of `core`, `react`, `inspector` and `devtools`.
+
+**Delivered.**
+1. npm account setup: 2FA with a passkey (npm no longer allows new TOTP setups), and the `react-insight` organization (the maintainer is owner). The name was free (`npm view @react-insight/core` returned 404 before publishing).
+2. Pre-publish checks: clean `main` in sync with `origin/main`, all four versions `0.1.0`, CI green, `pnpm publish -r --dry-run` for all four, `publint` all good, `attw` clean except an expected note (ESM only: a CommonJS `require` needs a dynamic `import()`).
+3. `CHANGELOG.md`: `[Unreleased]` became `[0.1.0] - 2026-10-21` (commit `4e6d249`, CI green).
+4. Published by hand from the maintainer's computer with `pnpm --filter <package> publish --access public`, one package at a time in the order `core` → `react` → `inspector` → `devtools`, checking `versions` and `dist-tags` after each.
+5. Post-release checks: a fresh project installed `react`, `inspector` and `devtools` from the registry (`core` came in through `react`; `pnpm why` confirmed one version) and the entry points loaded; `next-dogfood` was switched from tarballs to `^0.1.0` from the registry and worked in `next dev` and in a production build.
+
+**Real findings.**
+- No physical security key was available. The Windows passkey dialog only offered a USB key, so the passkey was registered from an Android phone ("This device"). `npm login` and each publish approval were done by opening the login link on the phone.
+- Right after each publish, `npm view` showed only `0.0.0-stage` (as version and as `latest`) for several minutes, although `pnpm` reported "Published". With `--prefer-online`, a few minutes later each package listed `["0.0.0-stage", "0.1.0"]` with `latest: 0.1.0`. npm's documentation describes `0.0.0-stage` as a placeholder npm creates for a new package under staged publishing; whether that was the cause here was not confirmed. Each package keeps this placeholder version.
+- `next-dogfood` had `@react-insight/core` as a direct dependency left from the tarball setup, but no code imports it; the build worked without it.
+
+**Verification.** The developer reported: the `npm view` outputs above, the fresh-install import check, `next-dogfood` working in dev and production from the registry, `pnpm build` passing after the direct `core` dependency was removed, and CI green after the CHANGELOG commit.
+
+**Known issues.** The git tag `v0.1.0` already existed and points to the older commit `b852a46`, not to `4e6d249` which the packages were published from; left as is by the maintainer's decision. The `0.0.0-stage` placeholder versions remain. Sibling order still follows registry insertion order.
+
+**Documentation.** `ARCHITECTURE.md`, `PROJECT_CONTEXT.md`, `ROADMAP.md` and this file updated. `DECISIONS.md` unchanged: no new architectural decision was made.
+
+**Next recommended step.** Choose between the Phase 3 candidates in `ROADMAP.md` (sibling order, Timeline, or the `@react-insight/react/install` entry point; each needs a short approved design first).
+
+---
+
 ## Session 29 (2026-10-07 → 2026-10-20) — Next.js, render reasons, panel behavior
 
 **Goal.** Validate the packed tarballs in a real Next.js app, then improve what a user sees in the panel before the first npm release.
@@ -53,11 +79,11 @@ after the condensed history.
 
 **Verification.** The developer reported the Quality Gate passing for each code step, CI green for each push (checked with `gh run list`), and manual validation passing: "Why it rendered" in a real Next.js 16 app (dev and production, React Compiler), every prediction matched; keyboard navigation and persisted size (7 manual checks each time).
 
-**Decisions.** A per-row render-reason indicator was decided against for now (the reason is already in the details pane); revisit only if feedback asks. Publishing to npm is postponed by the maintainer.
+**Decisions.** A per-row render-reason indicator was decided against for now (the reason is already in the details pane); revisit only if feedback asks. Publishing to npm was postponed on 2026-10-20 and done the next day (Session 30).
 
-**Known issues.** Sibling order follows registry insertion order (needs design). A state change with an equal bounded preview reports "No cause detected". Nothing is published to npm.
+**Known issues.** Sibling order follows registry insertion order (needs design). A state change with an equal bounded preview reports "No cause detected". Nothing was published to npm during this session.
 
-**Next recommended step.** `PROJECT_CONTEXT.md` sync, then a step-by-step walkthrough for the first npm publish of `0.1.0` (developer-run).
+**Next recommended step.** Publish `0.1.0` (done in Session 30).
 
 ---
 
