@@ -1,6 +1,6 @@
 {
   "name": "@react-insight/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript-first plugin runtime powering React Insight.",
   "keywords": [
     "react",
@@ -14,6 +14,7 @@
   ],
   "license": "MIT",
   "repository": {
+    "directory": "packages/core",
     "type": "git",
     "url": "git+https://github.com/afraz-saeed1986/react-insight.git"
   },

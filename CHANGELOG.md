@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-25
+
+### Changed
+
+- Each package README now has a "Which packages do I need?" table that tells a new user where to start.
+- The `repository` field of each package now has a `directory`, so the npm page links to the package's own folder in the monorepo.
+
 ## [0.1.0] - 2026-10-21
 
 ### Added

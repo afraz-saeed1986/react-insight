@@ -1,6 +1,6 @@
 {
   "name": "@react-insight/react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React integration for React Insight: component discovery and a typed read-only API.",
   "keywords": [
     "react",
@@ -12,6 +12,7 @@
   ],
   "license": "MIT",
   "repository": {
+    "directory": "packages/react",
     "type": "git",
     "url": "git+https://github.com/afraz-saeed1986/react-insight.git"
   },

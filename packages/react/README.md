@@ -15,6 +15,21 @@ pnpm add @react-insight/react react react-dom
 
 Requires React >= 19 and Node.js >= 22. ESM only.
 
+## Which packages do I need?
+
+| I want to... | Install |
+| --- | --- |
+| Read component data from my own code (`getComponents()`, `onChange()`) | `@react-insight/react` |
+| See a ready-made panel in my app (component tree, render counts, "Why it rendered") | `@react-insight/react` and `@react-insight/devtools` |
+| Inspect one component on demand (hook names) | `@react-insight/react` and `@react-insight/inspector` |
+| Write my own plugin, or use the runtime without React | `@react-insight/core` |
+
+Using React? Start with `@react-insight/react`: it already includes `@react-insight/core`. For the panel:
+
+```bash
+pnpm add @react-insight/react @react-insight/devtools react react-dom
+```
+
 ## Setup
 
 React reads the DevTools global hook **once, when `react-dom` is first loaded**. `installReactDevtoolsHook()` must therefore run before `react-dom` is evaluated.

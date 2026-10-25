@@ -1,6 +1,6 @@
 {
   "name": "@react-insight/devtools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Drop-in DevTools panel for React Insight: component tree, render flashes, hook and context details.",
   "keywords": [
     "react",
@@ -11,6 +11,7 @@
   ],
   "license": "MIT",
   "repository": {
+    "directory": "packages/devtools",
     "type": "git",
     "url": "git+https://github.com/afraz-saeed1986/react-insight.git"
   },
