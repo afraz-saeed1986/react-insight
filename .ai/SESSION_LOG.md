@@ -1,6 +1,6 @@
 # Session Log
 
-Condensed 2026-10-04, updated 2026-10-21. Sessions 1-25 are summarized per milestone (what shipped,
+Condensed 2026-10-04, updated 2026-10-27. Sessions 1-25 are summarized per milestone (what shipped,
 real findings, state at the end); the full prior narrative is in git history.
 Decision rationale lives in `DECISIONS.md`, not here. Newest session first
 after the condensed history.
@@ -29,6 +29,33 @@ after the condensed history.
 ### Phase 3 — Inspector (Sessions 24-25)
 - **S24:** real `ci.yml` added and verified; value preview extended to `ref` / `memo-like` (+ 200-char string cap); `ComponentRegistry` tests completed; `Insight.getComponent(id)`; `Insight.inspectHookNames(id)` (on-demand dispatcher swap; two technique/dependency decisions reversed after research); `@react-insight/inspector` created (fourth package).
 - **S25:** Playground "Inspect" button (first UI consumer); `memo` / `forwardRef` support across the whole discovery pipeline (previously invisible); `dispatcherAccess.test.ts`. State: all `.ai/` docs synchronized.
+
+---
+
+## Session 31 (2026-10-25) — 0.1.1: "which package?" docs
+
+**Goal.** A new user opening any one package page on npm should know where to start (the four packages looked confusing side by side).
+
+**Delivered.**
+1. A "Which packages do I need?" table with the same text in the README of all four packages (what to install for reading data, for the panel, for on-demand inspection, and for plugins; React users start with `@react-insight/react`, which already includes `core`).
+2. `repository.directory` in every `package.json`, so the npm "Repository" link opens the package's own folder.
+3. `CHANGELOG.md` section `[0.1.1] - 2026-10-25`; all four versions set to `0.1.1`.
+4. Published by hand in the order `core` → `react` → `inspector` → `devtools`, checking `versions` and `dist-tags` after each. Git tag `v0.1.1` created and pushed.
+
+**Real findings.**
+- The first `core` attempt failed with `404` on the `PUT`: the terminal's npm login had expired (npm answers an unauthenticated publish with 404). `npm login` and a repeat fixed it.
+- The connection to `registry.npmjs.org` was unstable (`ECONNRESET`, `npm ping` failed). For `react`, `npm view` first showed `0.1.0` while the npm website and an npm email already showed `0.1.1`; later `npm view` returned `0.1.1`. The `inspector` publish ended with `ECONNRESET`, yet `inspector@0.1.1` was in the registry afterwards. Rule used: after any failed or cut-off publish, check `npm view <package>@<version> version --prefer-online` before publishing again.
+- On the published pages the table is shown and the Repository link opens the package folder (reported by the developer).
+
+**Verification.** The developer reported: Gate passing, CI green after the release commit, `npm view` showing `0.1.1` and `latest: 0.1.1` for all four packages, and the final check of the npm pages.
+
+**Decisions.** A single umbrella package that installs everything was discussed; the lighter fix (README tables) was chosen for now. Revisit only if users still do not know where to start. It would need a design first (new package, re-exports, an entry for the hook install, dev-only panel not meant for production).
+
+**Known issues.** The tag `v0.1.0` still points to the older commit `b852a46`. Each package still lists the `0.0.0-stage` placeholder version. The packages did not show in `npm search` on 2026-10-21 (probably index delay; not rechecked). The connection to the npm registry from the maintainer's network is unreliable.
+
+**Documentation.** `SESSION_LOG.md` (this entry) and `ROADMAP.md`. `ARCHITECTURE.md`, `PROJECT_CONTEXT.md` and `DECISIONS.md` unchanged.
+
+**Next recommended step.** Choose from the Phase 3 candidates in `ROADMAP.md` (sibling order, Timeline, or the `@react-insight/react/install` entry point; each needs a short approved design first).
 
 ---
 
