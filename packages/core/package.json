@@ -1,6 +1,6 @@
 {
   "name": "@react-insight/core",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "TypeScript-first plugin runtime powering React Insight.",
   "keywords": [
     "react",

@@ -1,6 +1,6 @@
 {
   "name": "@react-insight/react",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "React integration for React Insight: component discovery and a typed read-only API.",
   "keywords": [
     "react",

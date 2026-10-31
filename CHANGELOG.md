@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-31
+
+### Changed
+
+- README of every package and the root README now share one Setup guide for React (Vite) and Next.js (App Router), based on `@react-insight/react/install`.
+- All four packages are versioned to `0.1.3` together; there are no code changes.
+
 ## [0.1.2] - 2026-10-31
 
 ### Added
