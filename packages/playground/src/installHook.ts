@@ -1,3 +1,1 @@
-import { installReactDevtoolsHook } from "@react-insight/react";
-
-installReactDevtoolsHook();
+import "@react-insight/react/install";

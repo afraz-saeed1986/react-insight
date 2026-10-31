@@ -32,20 +32,11 @@ pnpm add @react-insight/react @react-insight/devtools react react-dom
 
 ## Setup
 
-React reads the DevTools global hook **once, when `react-dom` is first loaded**. `installReactDevtoolsHook()` must therefore run before `react-dom` is evaluated.
-
-Do not call it in the same file that imports `react-dom`: ES module `import`s are evaluated before the body of the importing file, so the call would come too late (it can appear to work in a dev server and fail in a production bundle). Put it in its own module and import that module first:
-
-```ts
-// src/installHook.ts
-import { installReactDevtoolsHook } from "@react-insight/react";
-
-installReactDevtoolsHook();
-```
+React reads the DevTools global hook **once, when `react-dom` is first loaded**, so the hook must be installed before `react-dom` is evaluated. Importing `@react-insight/react/install` installs it. Make it the **first import** of your entry file:
 
 ```tsx
 // src/main.tsx
-import "./installHook"; // must stay the first import
+import "@react-insight/react/install"; // must stay the first import
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -66,9 +57,25 @@ createRoot(document.getElementById("root")!).render(
 
 `createInsight()` must be called before the first render so the first commit is observed.
 
+### Installing the hook yourself
+
+If you want to control when the hook is installed, call `installReactDevtoolsHook()` instead. Do not call it in the same file that imports `react-dom`: ES module `import`s are evaluated before the body of the importing file, so the call would come too late (it can appear to work in a dev server and fail in a production bundle). Put it in its own module and import that module first:
+
+```ts
+// src/installHook.ts
+import { installReactDevtoolsHook } from "@react-insight/react";
+
+installReactDevtoolsHook();
+```
+
+```tsx
+// src/main.tsx
+import "./installHook"; // must stay the first import
+```
+
 ### Next.js
 
-In Next.js you do not control module evaluation order, so the separate-module approach above is not enough: it worked in `next dev`, but a production build showed an empty tree. Install the hook in `src/instrumentation-client.ts`, which Next runs before hydration:
+In Next.js you do not control module evaluation order, so importing it from your own entry file is not enough: a separate module worked in `next dev`, but a production build showed an empty tree. Import it in `src/instrumentation-client.ts`, which Next runs before hydration:
 
 ```ts
 // src/instrumentation-client.ts
@@ -85,7 +92,8 @@ If a production build shows no components, check `window.__REACT_DEVTOOLS_GLOBAL
 
 - `createInsight()`: creates an `Insight` instance.
 - `<InsightProvider insight={...}>` and `useInsight()`: provide and read the instance.
-- `installReactDevtoolsHook()`: see Setup.
+- `@react-insight/react/install`: importing it installs the DevTools hook; see Setup.
+- `installReactDevtoolsHook()`: installs the hook when you call it yourself; see Setup.
 
 The `Insight` instance:
 

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-31
+
+### Added
+
+- `@react-insight/react/install`: importing it installs the DevTools hook as a side effect, so the hook can be set up with a single first `import` instead of a separate module that calls `installReactDevtoolsHook()`. `installReactDevtoolsHook()` is still exported.
+
+### Changed
+
+- `@react-insight/react` now declares `sideEffects: ["./dist/install.js"]` (it was `false`), so bundlers keep the `install` import.
+- The READMEs describe the `install` import as the main setup (in Next.js: in `src/instrumentation-client.ts`) and `installReactDevtoolsHook()` as the alternative.
+- `@react-insight/core`, `@react-insight/inspector` and `@react-insight/devtools` are versioned to `0.1.2` together with `@react-insight/react`; they have no code changes.
+
 ## [0.1.1] - 2026-10-25
 
 ### Changed

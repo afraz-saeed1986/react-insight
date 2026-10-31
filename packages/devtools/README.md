@@ -34,7 +34,7 @@ pnpm add @react-insight/react @react-insight/devtools react react-dom
 
 ## Usage
 
-Set up `@react-insight/react` first (see its README: `installReactDevtoolsHook()`
+Set up `@react-insight/react` first (see its README: `import "@react-insight/react/install"`
 before `react-dom`, then `createInsight()` and `<InsightProvider>`). Then render
 the panel anywhere **inside** `InsightProvider`:
 
@@ -59,12 +59,10 @@ in development.
 
 The DevTools hook must be installed **before React loads**. In a production
 build, installing it from a client component is too late and the tree stays
-empty. Install it in `src/instrumentation-client.ts` instead:
+empty. Import it in `src/instrumentation-client.ts` instead:
 
 ```ts
-import { installReactDevtoolsHook } from "@react-insight/react";
-
-installReactDevtoolsHook();
+import "@react-insight/react/install";
 ```
 
 Verified with Next.js 16 (App Router, React Compiler enabled), in both

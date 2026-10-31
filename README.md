@@ -44,24 +44,17 @@ Dependency direction: `devtools` → `inspector` → `react` → `core`.
 
 ## Quick start
 
-Once published:
+Install:
 
 ```bash
 pnpm add @react-insight/react @react-insight/devtools react react-dom
 ```
 
-`installReactDevtoolsHook()` must run **before `react-dom` is evaluated**, so call it from its own module and import that module first (imports are evaluated before the importing file's body, so calling it in the same file is too late):
-
-```ts
-// src/installHook.ts
-import { installReactDevtoolsHook } from "@react-insight/react";
-
-installReactDevtoolsHook();
-```
+Make `@react-insight/react/install` the **first import** of your entry file. It installs the DevTools hook before `react-dom` is evaluated (React reads the hook only once, when `react-dom` loads):
 
 ```tsx
 // src/main.tsx
-import "./installHook"; // must stay the first import
+import "@react-insight/react/install"; // must stay the first import
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -82,7 +75,7 @@ createRoot(document.getElementById("root")!).render(
 );
 ```
 
-Using Next.js? Install the hook in `src/instrumentation-client.ts` instead; a separate module is not enough in a production build. See the [`@react-insight/react` README](packages/react) for details.
+Using Next.js? Import `@react-insight/react/install` in `src/instrumentation-client.ts` instead of your entry file; you do not control module evaluation order there. See the [`@react-insight/react` README](packages/react) for details and for installing the hook yourself.
 
 See each package's README for its full API and caveats.
 

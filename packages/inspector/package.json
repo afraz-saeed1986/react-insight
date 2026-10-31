@@ -1,6 +1,6 @@
 {
   "name": "@react-insight/inspector",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "On-demand component inspection built on top of @react-insight/react.",
   "keywords": [
     "react",
