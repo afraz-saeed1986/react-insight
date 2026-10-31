@@ -32,41 +32,86 @@ Using React? Start with `@react-insight/react`: it already includes `@react-insi
 pnpm add @react-insight/react @react-insight/devtools react react-dom
 ```
 
-## Usage
+## Setup
 
-Set up `@react-insight/react` first (see its README: `import "@react-insight/react/install"`
-before `react-dom`, then `createInsight()` and `<InsightProvider>`). Then render
-the panel anywhere **inside** `InsightProvider`:
+The panel needs `@react-insight/react` set up first. React reads the DevTools hook once, when `react-dom` loads. The hook must exist before that, or the tree stays empty. Importing `@react-insight/react/install` installs it.
+
+### React (Vite)
+
+Install the packages first (see above), then edit `src/main.tsx`:
 
 ```tsx
+import "@react-insight/react/install"; // must stay the first import
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { createInsight, InsightProvider } from "@react-insight/react";
 import { DevtoolsPanel } from "@react-insight/devtools";
+import "./index.css";
+import App from "./App.tsx";
 
-export function App() {
-  return (
-    <>
-      <YourApp />
+const insight = createInsight();
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <InsightProvider insight={insight}>
+      <App />
       <DevtoolsPanel />
-    </>
-  );
-}
+    </InsightProvider>
+  </StrictMode>,
+);
 ```
 
-`DevtoolsPanel` takes no props. It renders a panel fixed to the bottom of the
-viewport, so it can be placed anywhere inside `InsightProvider`. Render it only
-in development.
+Run `pnpm dev` and open the panel.
 
-### Next.js
+### Next.js (App Router)
 
-The DevTools hook must be installed **before React loads**. In a production
-build, installing it from a client component is too late and the tree stays
-empty. Import it in `src/instrumentation-client.ts` instead:
+You do not control module order in Next.js, and installing the hook from a client component is too late. Install it in `src/instrumentation-client.ts`. Next.js runs this file before hydration.
+
+**1.** Create `src/instrumentation-client.ts`:
 
 ```ts
 import "@react-insight/react/install";
 ```
 
-Verified with Next.js 16 (App Router, React Compiler enabled), in both
-`next dev` and a production build (`next build` + `next start`).
+**2.** Create `src/InsightRoot.tsx`:
+
+```tsx
+"use client";
+
+import type { ReactNode } from "react";
+import { createInsight, InsightProvider } from "@react-insight/react";
+import { DevtoolsPanel } from "@react-insight/devtools";
+
+const insight = createInsight();
+
+export function InsightRoot({ children }: { children: ReactNode }) {
+  return (
+    <InsightProvider insight={insight}>
+      {children}
+      <DevtoolsPanel />
+    </InsightProvider>
+  );
+}
+```
+
+**3.** In `src/app/layout.tsx`, wrap `children` inside `<body>`:
+
+```tsx
+import { InsightRoot } from "./InsightRoot";
+
+// ...
+<body>
+  <InsightRoot>{children}</InsightRoot>
+</body>
+```
+
+Run `pnpm dev` and open the panel. Verified with Next.js 16 (App Router, React Compiler enabled), in `next dev` and in a production build (`next build` + `next start`).
+
+Component names are minified in production builds. Use the development server (`vite` or `next dev`) to read them.
+
+### Using `DevtoolsPanel`
+
+`DevtoolsPanel` takes no props. It renders a panel fixed to the bottom of the viewport. Place it anywhere **inside** `InsightProvider`. Render it only in development.
 
 ## Features
 

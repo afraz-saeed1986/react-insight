@@ -32,17 +32,20 @@ pnpm add @react-insight/react @react-insight/devtools react react-dom
 
 ## Setup
 
-React reads the DevTools global hook **once, when `react-dom` is first loaded**, so the hook must be installed before `react-dom` is evaluated. Importing `@react-insight/react/install` installs it. Make it the **first import** of your entry file:
+React reads the DevTools hook once, when `react-dom` loads. The hook must exist before that, or the tree stays empty. Importing `@react-insight/react/install` installs it.
+
+### React (Vite)
+
+Install the packages first (see **Install** above), then edit `src/main.tsx`:
 
 ```tsx
-// src/main.tsx
 import "@react-insight/react/install"; // must stay the first import
-
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createInsight, InsightProvider } from "@react-insight/react";
-
-import { App } from "./App";
+import { DevtoolsPanel } from "@react-insight/devtools";
+import "./index.css";
+import App from "./App.tsx";
 
 const insight = createInsight();
 
@@ -50,16 +53,63 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <InsightProvider insight={insight}>
       <App />
+      <DevtoolsPanel />
     </InsightProvider>
   </StrictMode>,
 );
 ```
 
-`createInsight()` must be called before the first render so the first commit is observed.
+Run `pnpm dev` and open the panel.
+
+### Next.js (App Router)
+
+You do not control module order in Next.js, so install the hook in `src/instrumentation-client.ts`. Next.js runs this file before hydration.
+
+**1.** Create `src/instrumentation-client.ts`:
+
+```ts
+import "@react-insight/react/install";
+```
+
+**2.** Create `src/InsightRoot.tsx`:
+
+```tsx
+"use client";
+
+import type { ReactNode } from "react";
+import { createInsight, InsightProvider } from "@react-insight/react";
+import { DevtoolsPanel } from "@react-insight/devtools";
+
+const insight = createInsight();
+
+export function InsightRoot({ children }: { children: ReactNode }) {
+  return (
+    <InsightProvider insight={insight}>
+      {children}
+      <DevtoolsPanel />
+    </InsightProvider>
+  );
+}
+```
+
+**3.** In `src/app/layout.tsx`, wrap `children` inside `<body>`:
+
+```tsx
+import { InsightRoot } from "./InsightRoot";
+
+// ...
+<body>
+  <InsightRoot>{children}</InsightRoot>
+</body>
+```
+
+Run `pnpm dev` and open the panel. Verified with Next.js 16 (App Router, React Compiler enabled), in `next dev` and in a production build.
+
+Component names are minified in production builds. Use the development server (`vite` or `next dev`) to read them.
 
 ### Installing the hook yourself
 
-If you want to control when the hook is installed, call `installReactDevtoolsHook()` instead. Do not call it in the same file that imports `react-dom`: ES module `import`s are evaluated before the body of the importing file, so the call would come too late (it can appear to work in a dev server and fail in a production bundle). Put it in its own module and import that module first:
+If you prefer not to use the `install` entry, call the function in its own module and import that module first:
 
 ```ts
 // src/installHook.ts
@@ -73,20 +123,7 @@ installReactDevtoolsHook();
 import "./installHook"; // must stay the first import
 ```
 
-### Next.js
-
-In Next.js you do not control module evaluation order, so importing it from your own entry file is not enough: a separate module worked in `next dev`, but a production build showed an empty tree. Import it in `src/instrumentation-client.ts`, which Next runs before hydration:
-
-```ts
-// src/instrumentation-client.ts
-import { installReactDevtoolsHook } from "@react-insight/react";
-
-installReactDevtoolsHook();
-```
-
-Then create the `Insight` instance and render `InsightProvider` in a client component, as above. Verified with Next.js 16 (App Router, React Compiler enabled) in `next dev` and in `next build` + `next start`.
-
-If a production build shows no components, check `window.__REACT_DEVTOOLS_GLOBAL_HOOK__.renderers.size` in the browser console: `0` means React loaded before the hook was installed. This check only applies to production builds. In dev servers it is not reliable: with Fast Refresh (for example `@vitejs/plugin-react`) another hook is installed first, so the value is always `0`, and `0` was also observed in `next dev` while components were discovered normally.
+Do not call it in the same file after other imports: imports are hoisted, so `react-dom` would load first. `installReactDevtoolsHook()` is idempotent, so using it together with the `install` entry is safe.
 
 ## API
 

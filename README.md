@@ -50,18 +50,20 @@ Install:
 pnpm add @react-insight/react @react-insight/devtools react react-dom
 ```
 
-Make `@react-insight/react/install` the **first import** of your entry file. It installs the DevTools hook before `react-dom` is evaluated (React reads the hook only once, when `react-dom` loads):
+React reads the DevTools hook once, when `react-dom` loads. The hook must exist before that, or the tree stays empty. Importing `@react-insight/react/install` installs it.
+
+### React (Vite)
+
+Edit `src/main.tsx`:
 
 ```tsx
-// src/main.tsx
 import "@react-insight/react/install"; // must stay the first import
-
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createInsight, InsightProvider } from "@react-insight/react";
 import { DevtoolsPanel } from "@react-insight/devtools";
-
-import { App } from "./App";
+import "./index.css";
+import App from "./App.tsx";
 
 const insight = createInsight();
 
@@ -75,9 +77,55 @@ createRoot(document.getElementById("root")!).render(
 );
 ```
 
-Using Next.js? Import `@react-insight/react/install` in `src/instrumentation-client.ts` instead of your entry file; you do not control module evaluation order there. See the [`@react-insight/react` README](packages/react) for details and for installing the hook yourself.
+Run `pnpm dev` and open the panel.
 
-See each package's README for its full API and caveats.
+### Next.js (App Router)
+
+You do not control module order in Next.js, so install the hook in `src/instrumentation-client.ts`. Next.js runs this file before hydration.
+
+**1.** Create `src/instrumentation-client.ts`:
+
+```ts
+import "@react-insight/react/install";
+```
+
+**2.** Create `src/InsightRoot.tsx`:
+
+```tsx
+"use client";
+
+import type { ReactNode } from "react";
+import { createInsight, InsightProvider } from "@react-insight/react";
+import { DevtoolsPanel } from "@react-insight/devtools";
+
+const insight = createInsight();
+
+export function InsightRoot({ children }: { children: ReactNode }) {
+  return (
+    <InsightProvider insight={insight}>
+      {children}
+      <DevtoolsPanel />
+    </InsightProvider>
+  );
+}
+```
+
+**3.** In `src/app/layout.tsx`, wrap `children` inside `<body>`:
+
+```tsx
+import { InsightRoot } from "./InsightRoot";
+
+// ...
+<body>
+  <InsightRoot>{children}</InsightRoot>
+</body>
+```
+
+Run `pnpm dev` and open the panel. Verified with Next.js 16 (App Router, React Compiler enabled), in `next dev` and in a production build.
+
+Component names are minified in production builds. Use the development server (`vite` or `next dev`) to read them.
+
+To install the hook yourself instead of using the `install` entry, see the [`@react-insight/react` README](packages/react). See each package's README for its full API and caveats.
 
 ## Try it locally
 
